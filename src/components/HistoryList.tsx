@@ -31,7 +31,13 @@ export function HistoryList({ history }: HistoryListProps) {
           <div className="history-meta">
             <span>{priceLabels[item.budget]}</span>
             <span>{distanceLabels[item.distance]}</span>
-            <span>{item.feedback ? feedbackLabels[item.feedback] : '未反馈'}</span>
+            <span
+              className={
+                item.feedback === 'worth' ? 'fb-worth' : item.feedback === 'regret' ? 'fb-regret' : undefined
+              }
+            >
+              {item.feedback ? feedbackLabels[item.feedback] : '未反馈'}
+            </span>
           </div>
           <p>{[...item.selectedMoods, ...(item.partnerMoods ?? [])].slice(0, 5).join(' / ') || '随缘局'}</p>
         </article>

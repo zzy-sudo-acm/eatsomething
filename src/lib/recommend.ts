@@ -1,4 +1,5 @@
 import {
+  DecisionCopy,
   DecisionHistory,
   DecisionInput,
   FoodItem,
@@ -80,6 +81,20 @@ const formatList = (values: string[], fallback: string) => {
   return `${values.slice(0, 3).join('、')}等状态`;
 };
 
+const pick = <T>(values: T[]): T => values[Math.floor(Math.random() * values.length)];
+
+const getVerdict = (
+  score: number,
+  food: FoodItem,
+  input: DecisionInput
+): { verdict: string; verdictTone: DecisionCopy['verdictTone'] } => {
+  const conflict = (input.selectedMoods.includes('不想吃辣') && food.spicy) || food.stability === 'low';
+  if (score >= 40 && !conflict) return { verdict: '胃部通过率 高', verdictTone: 'good' };
+  if (score >= 24 && !conflict) return { verdict: '匹配度 稳妥', verdictTone: 'good' };
+  if (conflict) return { verdict: '今日风险 略高', verdictTone: 'risky' };
+  return { verdict: '匹配度 还行', verdictTone: 'ok' };
+};
+
 const buildCopy = (
   picked: ScoredFood,
   input: DecisionInput,
@@ -94,42 +109,68 @@ const buildCopy = (
   const recentTime = getLatestFoodTime(history, food.id);
   const ateRecently = recentTime && Date.now() - recentTime < 7 * dayMs;
 
-  let title = '别折腾，吃稳定选项';
-  if (input.coupleMode) title = '今晚走折中路线';
-  else if (moods.includes('想省钱')) title = '预算守门员上线';
-  else if (moods.includes('想奖励自己') || moods.includes('刚考完')) title = '今天允许快乐一点';
-  else if (moods.includes('饿疯了')) title = '先把血条回上来';
-  else if (moods.includes('不知道想吃啥')) title = '别问灵魂，问胃';
+  let title = '别折腾，今天吃稳的';
+  if (input.coupleMode) title = '给你俩选了个不容易吵架的';
+  else if (moods.includes('想省钱')) title = '钱包说了算，这个不亏';
+  else if (moods.includes('想奖励自己') || moods.includes('刚考完')) title = '今天可以对自己好一点';
+  else if (moods.includes('饿疯了')) title = '先把血条回满再说';
+  else if (moods.includes('不知道想吃啥')) title = '别问脑子了，问你的胃';
 
-  const selfPart = formatList(moods, '你没有给太多线索');
-  const partnerPart = partnerMoods.length ? `，她偏向${formatList(partnerMoods, '随缘')}` : '';
-  const matchPart = matched.length ? `它正好接住了${formatList(matched, '当前状态')}` : '它不是最花哨的，但今天胜在不用纠结';
-  const relationPart = input.coupleMode
-    ? `你这边是${selfPart}${partnerPart}，系统做了个不太离谱的折中。`
-    : `你现在是${selfPart}。`;
+  // Reason: written like a friend talking, not a rule dump.
+  let reason: string;
+  if (input.coupleMode) {
+    const selfPart = formatList(moods.filter((m) => m !== '和女友一起'), '没什么特别要求');
+    const partnerPart = partnerMoods.length ? formatList(partnerMoods.filter((m) => m !== '和女友一起'), '随缘') : '随缘';
+    reason =
+      `你这边${selfPart}，她那边${partnerPart}，两边胃口合并之后，${food.name}是那个谁都不太会翻脸的答案。` +
+      `预算压在${priceLabels[food.priceRange]}，${foodDistanceLabels[food.distance]}就能解决，不用为了一顿饭走太远。`;
+  } else {
+    const opener = matched.length
+      ? `你说${formatList(matched, '现在这状态')}，那${food.name}基本就是为这个准备的。`
+      : `你也没太想好吃啥，那就别难为自己——${food.name}不花哨，但今天胜在不用纠结。`;
+    const why = pick([
+      `不贵（${priceLabels[food.priceRange]}就够），${foodDistanceLabels[food.distance]}也顺手，稳定性${stabilityLabels[food.stability]}，踩雷概率不高。`,
+      `${foodDistanceLabels[food.distance]}就能吃到，花费大概${priceLabels[food.priceRange]}，是那种闭着眼点也不会出错的选项。`,
+      `你要的本来就不是惊喜，是一个不超预算、不用走太远、还不容易难吃的答案，它都占了。`,
+    ]);
+    reason = `${opener}${why}`;
+  }
 
-  const reason = `${relationPart}${matchPart}，预算大概压在${priceLabels[food.priceRange]}，距离属于${foodDistanceLabels[food.distance]}，稳定性${stabilityLabels[food.stability]}。`;
-
-  const risks = [];
-  if (food.spicy) risks.push('带辣，嘴硬可以，胃未必同意');
-  if (food.stability === 'low') risks.push('稳定性偏低，今天有探索成本');
-  if (input.distance !== food.distance) risks.push(`和你选的${distanceLabels[input.distance]}不完全一致`);
-  if (ateRecently) risks.push('最近吃过一次，重复感可能会冒头');
-  if (!risks.length) risks.push('风险不大，主要风险是你又开始问“要不要换一个”');
+  // Risk: human, not a clause list.
+  let risk: string;
+  if (food.spicy && allMoods.includes('不想吃辣')) {
+    risk = '它其实带点辣，你刚说不想吃辣——嘴硬可以，胃不一定买账。';
+  } else if (food.spicy) {
+    risk = '微辣预警，怕辣的话嘴下留情。';
+  } else if (food.stability === 'low') {
+    risk = '这家稳定性一般，今天算是带点探索成本，做好心理准备。';
+  } else if (ateRecently) {
+    risk = '最近刚吃过一次，可能会有点「又是它」的感觉。';
+  } else if (input.distance !== food.distance) {
+    risk = `跟你选的「${distanceLabels[input.distance]}」不完全对得上，但差得不多。`;
+  } else {
+    risk = '风险不大，唯一的问题是你吃完可能又会问「要不要换一个」。';
+  }
 
   const punchlines = [
-        '你现在不是没主见，你只是饿了。',
-        '系统判定：今天不适合探索新店。',
-        '本次决定由系统背锅。',
-        `你不是想吃${food.name}，你是想让生活别再出选择题。`,
-        '别装了，今天你的胃只想要一个稳定答案。',
-      ];
+    '你现在不是没主见，你只是饿了。',
+    '本次决定由系统背锅，你只负责张嘴。',
+    '别折腾了，今天适合吃稳定选项。',
+    '系统判定：今天不适合探索新店。',
+    `你不是非要吃${food.name}，你只是想让生活少出一道选择题。`,
+  ];
+
+  const { verdict, verdictTone } = getVerdict(picked.score, food, input);
 
   return {
     title,
+    verdict,
+    verdictTone,
     reason,
-    risk: risks.join('；'),
-    punchline: input.coupleMode ? '本轮由系统背锅，吃不好不许怪对方。' : punchlines[Math.floor(Math.random() * punchlines.length)],
+    risk,
+    punchline: input.coupleMode
+      ? '本轮由系统背锅，吃不好不许怪对方。你俩的胃部意见已合并，挑的是个相对不容易吵架的答案。'
+      : pick(punchlines),
     alternatives: alternatives.map((item) => item.name),
   };
 };

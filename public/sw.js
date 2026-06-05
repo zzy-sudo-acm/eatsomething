@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mealmood-v0-1';
+const CACHE_NAME = 'mealmood-v0-1-1';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

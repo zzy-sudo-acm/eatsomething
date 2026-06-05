@@ -17,6 +17,18 @@ export const moodOptions = [
   '不想吃太饱',
 ];
 
+// High-frequency states surfaced on the first screen of the Decide page.
+export const primaryMoodOptions = [
+  '懒得出门',
+  '想省钱',
+  '想奖励自己',
+  '饿疯了',
+  '不知道想吃啥',
+  '不想吃辣',
+  '和女友一起',
+  '刚考完',
+];
+
 export const priceLabels: Record<PriceRange, string> = {
   under10: '10以内',
   under20: '20以内',

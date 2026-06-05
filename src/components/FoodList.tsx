@@ -1,4 +1,4 @@
-import { Edit3, Flame, Trash2 } from 'lucide-react';
+import { Pencil, Flame, Trash2 } from 'lucide-react';
 import { FoodItem } from '../types';
 import { foodDistanceLabels, priceLabels, stabilityLabels, typeLabels } from '../lib/options';
 
@@ -15,31 +15,41 @@ export function FoodList({ foods, onEdit, onDelete }: FoodListProps) {
         <article className="food-item" key={food.id}>
           <div className="food-item__main">
             <div>
-              <h3>{food.name}</h3>
+              <div className="food-item__head">
+                <h3>{food.name}</h3>
+                {food.spicy && (
+                  <span className="spicy-mark" title="辣" aria-label="辣">
+                    <Flame size={13} />
+                  </span>
+                )}
+              </div>
               <p>
-                {priceLabels[food.priceRange]} · {foodDistanceLabels[food.distance]} · {typeLabels[food.type]} · 稳定性
+                {priceLabels[food.priceRange]} · {foodDistanceLabels[food.distance]} · {typeLabels[food.type]} · 稳定
                 {stabilityLabels[food.stability]}
               </p>
             </div>
-            {food.spicy && (
-              <span className="spicy-mark" title="辣">
-                <Flame size={16} />
-              </span>
-            )}
+            <div className="food-item__actions">
+              <button type="button" className="icon-button" onClick={() => onEdit(food)} aria-label={`编辑 ${food.name}`} title="编辑">
+                <Pencil size={16} />
+              </button>
+              <button
+                type="button"
+                className="icon-button danger"
+                onClick={() => onDelete(food.id)}
+                aria-label={`删除 ${food.name}`}
+                title="删除"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
-          <div className="food-tags">
-            {food.tags.slice(0, 5).map((tag) => (
-              <span key={tag}>{tag}</span>
-            ))}
-          </div>
-          <div className="food-actions">
-            <button type="button" onClick={() => onEdit(food)} aria-label={`编辑 ${food.name}`} title="编辑">
-              <Edit3 size={18} />
-            </button>
-            <button type="button" onClick={() => onDelete(food.id)} aria-label={`删除 ${food.name}`} title="删除">
-              <Trash2 size={18} />
-            </button>
-          </div>
+          {food.tags.length > 0 && (
+            <div className="food-tags">
+              {food.tags.slice(0, 5).map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </div>
+          )}
         </article>
       ))}
     </div>

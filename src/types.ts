@@ -47,6 +47,8 @@ export interface ScoredFood {
 
 export interface DecisionCopy {
   title: string;
+  verdict: string;
+  verdictTone: 'good' | 'ok' | 'risky';
   reason: string;
   risk: string;
   punchline: string;

@@ -3,6 +3,16 @@ import { DecisionHistory, FoodItem } from '../types';
 
 const FOOD_KEY = 'mealmood.foods.v01';
 const HISTORY_KEY = 'mealmood.history.v01';
+const THEME_KEY = 'mealmood.theme.v01';
+
+export type ThemeMode = 'day' | 'night';
+
+export const loadTheme = (): ThemeMode =>
+  localStorage.getItem(THEME_KEY) === 'night' ? 'night' : 'day';
+
+export const saveTheme = (theme: ThemeMode) => {
+  localStorage.setItem(THEME_KEY, theme);
+};
 
 const cloneDefaultFoods = (): FoodItem[] =>
   defaultFoods.map((food) => ({
