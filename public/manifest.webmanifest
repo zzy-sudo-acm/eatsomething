@@ -1,0 +1,21 @@
+{
+  "name": "MealMood / 今天吃点啥",
+  "short_name": "MealMood",
+  "description": "根据状态、预算、距离和情绪帮你做吃饭决定。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111318",
+  "theme_color": "#111318",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["food", "lifestyle", "utilities"],
+  "lang": "zh-CN"
+}
