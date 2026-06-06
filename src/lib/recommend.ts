@@ -398,8 +398,10 @@ const getVerdict = (
   allMoods: string[]
 ): { verdict: string; verdictTone: DecisionCopy['verdictTone'] } => {
   const conflict = (allMoods.includes('不想吃辣') && food.spicy) || food.stability === 'low';
-  if (score >= 40 && !conflict) return { verdict: '胃部通过率 高', verdictTone: 'good' };
-  if (score >= 24 && !conflict) return { verdict: '匹配度 稳妥', verdictTone: 'good' };
+  if (score >= 40 && !conflict)
+    return { verdict: pick(['胃部通过率 高', '匹配度 很稳', '本轮稳了']), verdictTone: 'good' };
+  if (score >= 24 && !conflict)
+    return { verdict: pick(['匹配度 稳妥', '大概率不翻车']), verdictTone: 'good' };
   if (conflict) return { verdict: '今日风险 略高', verdictTone: 'risky' };
   return { verdict: '匹配度 还行', verdictTone: 'ok' };
 };
@@ -437,12 +439,23 @@ const buildCopy = (
       `大概${food.estimatedPrice}元，${foodDistanceLabels[food.distance]}就能解决，不用为了一顿饭走太远。`;
   } else {
     const opener = matched.length
-      ? `你说${formatList(matched, '现在这状态')}，那${food.name}基本就是为这个准备的。`
-      : `你也没太想好吃啥，那就别难为自己——${food.name}不花哨，但今天胜在不用纠结。`;
+      ? pick([
+          `你说${formatList(matched, '现在这状态')}，那${food.name}基本就是为这个量身定的。`,
+          `就你这「${formatList(matched, '现在这状态')}」的状态，闭眼选都该是${food.name}。`,
+          `行吧，${formatList(matched, '现在这状态')}——${food.name}举手了，说这活它最熟。`,
+        ])
+      : pick([
+          `你也没太想好吃啥，那就别难为自己——${food.name}不花哨，但今天胜在不用纠结。`,
+          `线索给得不多，系统替你拿了主意：${food.name}，主打一个不会出错。`,
+          `你这是把选择权整个交出来了，那系统就不客气——${food.name}，安排。`,
+        ]);
     const why = pick([
       `大概${food.estimatedPrice}元，${foodDistanceLabels[food.distance]}也顺手，稳定性${stabilityLabels[food.stability]}，踩雷概率不高。`,
       `${foodDistanceLabels[food.distance]}就能吃到，花费大概${food.estimatedPrice}元，是那种闭着眼点也不会出错的选项。`,
       `你要的本来就不是惊喜，是一个预算合适、不用走太远、还不容易难吃的答案，它都占了。`,
+      `${food.estimatedPrice}元上下，${foodDistanceLabels[food.distance]}，稳定性${stabilityLabels[food.stability]}——典型的「不惊艳但不翻车」型选手。`,
+      `别看它普通，${food.estimatedPrice}元能稳稳把你喂饱这件事，本身就挺加分。`,
+      `它不负责让你惊喜，只负责让你吃完不后悔——${food.estimatedPrice}元，${foodDistanceLabels[food.distance]}，刚好。`,
     ]);
     reason = `${opener}${why}`;
   }
@@ -463,7 +476,7 @@ const buildCopy = (
   if (food.spicy && allMoods.includes('不想吃辣')) {
     risk = '它其实带点辣，你刚说不想吃辣——嘴硬可以，胃不一定买账。';
   } else if (food.spicy) {
-    risk = '微辣预警，怕辣的话嘴下留情。';
+    risk = pick(['微辣预警，怕辣的话嘴下留情，别逞强。', '它带点辣，嘴硬可以，明天的你不一定原谅今天的你。']);
   } else if (food.stability === 'low') {
     risk = '这家稳定性一般，今天算是带点探索成本，做好心理准备。';
   } else if (ateRecently) {
@@ -471,7 +484,11 @@ const buildCopy = (
   } else if (input.distance !== food.distance) {
     risk = `跟你选的「${distanceLabels[input.distance]}」不完全对得上，但差得不多。`;
   } else {
-    risk = '风险不大，唯一的问题是你吃完可能又会问「要不要换一个」。';
+    risk = pick([
+      '风险不大，唯一的隐患是你吃完可能又开始问「要不要换一个」。',
+      '基本零风险，真要说问题，就是它太稳了，稳到没有故事可讲。',
+      '没什么坑，放心吃；真出事，算系统的。',
+    ]);
   }
 
   const punchlines = [
@@ -480,6 +497,9 @@ const buildCopy = (
     '别折腾了，今天适合吃稳定选项。',
     '系统判定：今天不适合探索新店。',
     `你不是非要吃${food.name}，你只是想让生活少出一道选择题。`,
+    '选择困难的尽头，是让别人替你选。这次别人就位了。',
+    '吃就完事了，纠结的时间够你吃两口。',
+    `${food.name}已经签字画押，剩下的交给你的嘴。`,
   ];
 
   const { verdict, verdictTone } = getVerdict(picked.score, food, allMoods);

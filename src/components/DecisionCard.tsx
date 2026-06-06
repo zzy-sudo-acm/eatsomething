@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
-import { BadgeCheck, CircleDollarSign, MapPin, MessageCircle, ShieldAlert } from 'lucide-react';
+import { BadgeCheck, Check, CircleDollarSign, MapPin, MessageCircle, ShieldAlert } from 'lucide-react';
 import { Feedback, Recommendation } from '../types';
 import { feedbackLabels, foodDistanceLabels, mealRoleLabels } from '../lib/options';
 
 interface DecisionCardProps {
   recommendation: Recommendation;
   submittedFeedback?: Feedback;
+  picked?: boolean;
   devMode?: boolean;
   onFeedback: (feedback: Feedback) => void;
+  onPick: () => void;
 }
 
 type VisibleFeedback = Exclude<Feedback, 'skipped'>;
@@ -17,23 +19,40 @@ const feedbackOrder: VisibleFeedback[] = ['worth', 'normal', 'regret'];
 const confirmCopy: Record<VisibleFeedback, string[]> = {
   worth: ['已归档，这顿正式进入你的胃部高光时刻。', '收到，系统记下了：这家可以再来。'],
   normal: ['已归档，本次决定正式进入胃部档案。', '记下了，不功不过，下次还能商量。'],
-  regret: ['系统已记仇，下次会参考你这份胃部证词。', '已归档，下次它出现时系统会先犹豫一下。'],
+  regret: ['已记入黑历史，下次它再敢出现，系统先替你拦一道。', '系统已记仇，下次会参考你这份胃部证词。'],
 };
+
+const pickConfirm = [
+  '记上了——这顿归你了，系统就不打分了。',
+  '已归档为「吃过·没空打分」，回头再聊。',
+  '搞定，这顿算你亲自拍的板，吃得开心就行。',
+];
 
 const stabilityText = (stability: string) =>
   stability === 'high' ? '高' : stability === 'medium' ? '中' : '低';
 
-export function DecisionCard({ recommendation, submittedFeedback, devMode = false, onFeedback }: DecisionCardProps) {
+export function DecisionCard({
+  recommendation,
+  submittedFeedback,
+  picked = false,
+  devMode = false,
+  onFeedback,
+  onPick,
+}: DecisionCardProps) {
   const { food, copy } = recommendation;
   const isCouple = copy.title.includes('你俩') || copy.punchline.includes('你俩');
   const [showDebug, setShowDebug] = useState(false);
+  const locked = Boolean(submittedFeedback) || picked;
 
   const confirmLine = useMemo(() => {
-    if (!submittedFeedback || submittedFeedback === 'skipped') return '';
-    const lines = confirmCopy[submittedFeedback];
-    return lines[Math.floor(Math.random() * lines.length)];
+    if (submittedFeedback && submittedFeedback !== 'skipped') {
+      const lines = confirmCopy[submittedFeedback];
+      return lines[Math.floor(Math.random() * lines.length)];
+    }
+    if (picked) return pickConfirm[Math.floor(Math.random() * pickConfirm.length)];
+    return '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submittedFeedback]);
+  }, [submittedFeedback, picked]);
 
   return (
     <article className={`decision-card anim-pop ${isCouple ? 'decision-card--couple' : ''}`}>
@@ -123,7 +142,13 @@ export function DecisionCard({ recommendation, submittedFeedback, devMode = fals
       )}
 
       <div className="feedback-block">
-        <div className="feedback-label">吃完了？给系统一句胃部证词：</div>
+        {!locked && (
+          <button type="button" className="primary-button pick-button" onClick={onPick}>
+            <Check size={19} />
+            就它了
+          </button>
+        )}
+        <div className="feedback-label">{locked ? '已记录' : '吃完了？顺便给它打个分（可选）：'}</div>
         <div className="feedback-row" aria-label="反馈">
           {feedbackOrder.map((feedback) => (
             <button
@@ -131,13 +156,13 @@ export function DecisionCard({ recommendation, submittedFeedback, devMode = fals
               type="button"
               className={`feedback-button ${submittedFeedback === feedback ? 'is-active' : ''}`}
               onClick={() => onFeedback(feedback)}
-              disabled={Boolean(submittedFeedback)}
+              disabled={locked}
             >
               {feedbackLabels[feedback]}
             </button>
           ))}
         </div>
-        {submittedFeedback && <div className="saved-tip">{confirmLine}</div>}
+        {confirmLine && <div className="saved-tip">{confirmLine}</div>}
       </div>
     </article>
   );

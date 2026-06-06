@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { HeartHandshake, RefreshCw, Sparkles } from 'lucide-react';
 import { DecisionCard } from '../components/DecisionCard';
 import { MoodSelector } from '../components/MoodSelector';
@@ -22,12 +22,21 @@ const loadingLines = [
   '正在甩锅给系统…',
   '正在计算今天怎么少后悔…',
   '胃部意见合并中…',
+  '正在排除你绝对不会吃的…',
+  '正在和你的钱包谈判…',
 ];
 
-const rejudgeLines = ['换一个', '不服，再判一次', '再给我一个答案'];
+const rejudgeLines = ['换一个', '不服，再判一次', '再给我一个答案', '这个不行，下一位', '再抽一次'];
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const buzz = (ms: number) => {
+  if (prefersReducedMotion()) return;
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    navigator.vibrate(ms);
+  }
+};
 
 export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePageProps) {
   const [selectedMoods, setSelectedMoods] = useState<string[]>(['不知道想吃啥']);
@@ -37,18 +46,30 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   const [coupleMode, setCoupleMode] = useState(false);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [submittedFeedback, setSubmittedFeedback] = useState<Feedback | undefined>();
+  const [pickedNoRating, setPickedNoRating] = useState(false);
   const [isDeciding, setIsDeciding] = useState(false);
   const [loadingLine, setLoadingLine] = useState(loadingLines[0]);
   const [rejudgeLabel, setRejudgeLabel] = useState(rejudgeLines[0]);
   const timerRef = useRef<number | undefined>(undefined);
+  const decisionRef = useRef<HTMLDivElement | null>(null);
 
   const canDecide = foods.length > 0;
+  const isLogged = Boolean(submittedFeedback) || pickedNoRating;
   const cleanSelectedMoods = useMemo(() => stripRelationshipMoods(selectedMoods), [selectedMoods]);
   const cleanPartnerMoods = useMemo(() => stripRelationshipMoods(partnerMoods), [partnerMoods]);
   const selectedSummary = useMemo(
     () => [...cleanSelectedMoods, ...(coupleMode ? cleanPartnerMoods : [])],
     [cleanPartnerMoods, cleanSelectedMoods, coupleMode]
   );
+
+  useEffect(() => {
+    if (recommendation && !isDeciding && decisionRef.current) {
+      decisionRef.current.scrollIntoView({
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    }
+  }, [recommendation, isDeciding]);
 
   const toggleCouple = () => {
     setSelectedMoods(stripRelationshipMoods);
@@ -57,7 +78,7 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   };
 
   const createSkipEntry = (): DecisionHistory | undefined => {
-    if (!recommendation || submittedFeedback) return undefined;
+    if (!recommendation || isLogged) return undefined;
 
     return {
       id: makeId('history'),
@@ -82,8 +103,10 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
     });
     setRecommendation(next);
     setSubmittedFeedback(undefined);
+    setPickedNoRating(false);
     setRejudgeLabel(rejudgeLines[Math.floor(Math.random() * rejudgeLines.length)]);
     setIsDeciding(false);
+    buzz(18);
   };
 
   const decide = () => {
@@ -105,20 +128,29 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
     timerRef.current = window.setTimeout(() => runRecommendation(nextHistory), delay);
   };
 
+  const baseEntry = (): DecisionHistory => ({
+    id: makeId('history'),
+    foodId: recommendation!.food.id,
+    foodName: recommendation!.food.name,
+    selectedMoods: cleanSelectedMoods,
+    partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
+    budget,
+    distance,
+    createdAt: Date.now(),
+  });
+
   const handleFeedback = (feedback: Feedback) => {
-    if (!recommendation || submittedFeedback) return;
+    if (!recommendation || isLogged) return;
     setSubmittedFeedback(feedback);
-    onAddHistory({
-      id: makeId('history'),
-      foodId: recommendation.food.id,
-      foodName: recommendation.food.name,
-      selectedMoods: cleanSelectedMoods,
-      partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
-      budget,
-      distance,
-      feedback,
-      createdAt: Date.now(),
-    });
+    buzz(12);
+    onAddHistory({ ...baseEntry(), feedback });
+  };
+
+  const handlePick = () => {
+    if (!recommendation || isLogged) return;
+    setPickedNoRating(true);
+    buzz(12);
+    onAddHistory({ ...baseEntry(), feedback: undefined });
   };
 
   return (
@@ -200,12 +232,16 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
       </section>
 
       {recommendation && !isDeciding && (
-        <DecisionCard
-          recommendation={recommendation}
-          submittedFeedback={submittedFeedback}
-          devMode={devMode}
-          onFeedback={handleFeedback}
-        />
+        <div ref={decisionRef}>
+          <DecisionCard
+            recommendation={recommendation}
+            submittedFeedback={submittedFeedback}
+            picked={pickedNoRating}
+            devMode={devMode}
+            onFeedback={handleFeedback}
+            onPick={handlePick}
+          />
+        </div>
       )}
 
       {!canDecide && (

@@ -1387,3 +1387,36 @@ h3 {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---- Verdict "stamp" + 就它了 button (added) ---- */
+.decision-card.anim-pop .verdict-pill {
+  animation: stampIn 380ms cubic-bezier(0.2, 0.8, 0.25, 1.3) both;
+  animation-delay: 220ms;
+  transform-origin: center;
+}
+
+@keyframes stampIn {
+  0% {
+    opacity: 0;
+    transform: scale(1.9) rotate(-12deg);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(0.9) rotate(3deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+
+.pick-button {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .decision-card.anim-pop .verdict-pill {
+    animation-delay: 0ms !important;
+  }
+}
