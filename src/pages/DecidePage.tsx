@@ -54,6 +54,12 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   const timerRef = useRef<number | undefined>(undefined);
   const decisionRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
   const canDecide = foods.length > 0;
   const isLogged = Boolean(submittedFeedback) || pickedNoRating;
   const cleanSelectedMoods = useMemo(() => stripRelationshipMoods(selectedMoods), [selectedMoods]);
@@ -248,6 +254,26 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
         </div>
       </section>
 
+      {isDeciding && (
+        <div ref={decisionRef}>
+          <div className="decision-loading-card" role="status" aria-live="polite" aria-busy="true">
+            <div className="decision-card__topline">
+              <span>今日胃部判决单</span>
+              <span className="verdict-pill tone-ok">判决中</span>
+            </div>
+            <div className="decision-loading-card__title">
+              <RefreshCw size={18} className="spin" />
+              <span>{loadingLine}</span>
+            </div>
+            <div className="decision-loading-card__lines" aria-hidden="true">
+              <span className="loading-line loading-line--wide" />
+              <span className="loading-line loading-line--mid" />
+              <span className="loading-line loading-line--short" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {recommendation && !isDeciding && (
         <div ref={decisionRef}>
           <DecisionCard
@@ -287,7 +313,7 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
             onClick={decide}
             disabled={!canDecide}
           >
-            <Sparkles size={22} />
+            {isDeciding ? <RefreshCw size={22} className="spin" /> : <Sparkles size={22} />}
             {isDeciding ? loadingLine : '帮我决定'}
           </button>
         )}

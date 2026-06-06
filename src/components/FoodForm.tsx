@@ -7,7 +7,6 @@ import {
   inferPriceRangeFromEstimatedPrice,
   mealRoleLabels,
   moodOptions,
-  priceLabels,
   satietyLabels,
   stabilityLabels,
   typeLabels,
@@ -20,7 +19,6 @@ interface FoodFormProps {
   onSave: (food: FoodItem) => void;
 }
 
-const priceOptions: PriceRange[] = ['under10', 'under20', 'under50', 'any'];
 const distanceOptions: Distance[] = ['near', 'medium', 'far', 'delivery'];
 const typeOptions: FoodType[] = ['meal', 'snack', 'drink', 'happy', 'date'];
 const mealRoleOptions: MealRole[] = ['main', 'lightMeal', 'addon', 'drink'];
@@ -28,6 +26,12 @@ const satietyOptions: Satiety[] = [1, 2, 3, 4, 5];
 const stabilityOptions: Stability[] = ['high', 'medium', 'low'];
 const foodTagOptions = [...moodOptions, '适合两个人'];
 const normalizeTags = (values: string[]) => Array.from(new Set(values.map(displayMoodLabel)));
+const autoPriceLabels: Record<PriceRange, string> = {
+  under10: '10元内',
+  under20: '20元内',
+  under50: '50元内',
+  any: '50元以上',
+};
 
 const inferFoodDefaultsByType = (
   type: FoodType
@@ -40,7 +44,6 @@ const inferFoodDefaultsByType = (
 
 export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
   const [name, setName] = useState(initial?.name ?? '');
-  const [priceRange, setPriceRange] = useState<PriceRange>(initial?.priceRange ?? 'under20');
   const [distance, setDistance] = useState<Distance>(initial?.distance ?? 'near');
   const [type, setType] = useState<FoodType>(initial?.type ?? 'meal');
   const [estimatedPrice, setEstimatedPrice] = useState(initial?.estimatedPrice ?? 16);
@@ -54,6 +57,10 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
   const [mealRoleTouched, setMealRoleTouched] = useState(false);
 
   const title = useMemo(() => (initial ? '编辑菜品' : '新增菜品'), [initial]);
+  const inferredPriceRange = useMemo(
+    () => inferPriceRangeFromEstimatedPrice(Math.max(1, Math.round(estimatedPrice || 1))),
+    [estimatedPrice]
+  );
 
   const toggleTag = (tag: string) => {
     if (tags.includes(tag)) {
@@ -69,7 +76,6 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
 
     if (!priceTouched) {
       setEstimatedPrice(defaults.estimatedPrice);
-      setPriceRange(inferPriceRangeFromEstimatedPrice(defaults.estimatedPrice));
     }
 
     if (!satietyTouched) {
@@ -84,7 +90,6 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
   const handleEstimatedPriceChange = (value: number) => {
     setPriceTouched(true);
     setEstimatedPrice(value);
-    setPriceRange(inferPriceRangeFromEstimatedPrice(Math.max(1, Math.round(value || 1))));
   };
 
   const handleSubmit = (event: FormEvent) => {
@@ -126,16 +131,22 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
       </label>
 
       <label className="field">
-        <span>价格区间</span>
-        <select value={priceRange} onChange={(event) => setPriceRange(event.target.value as PriceRange)} disabled>
-          {priceOptions.map((item) => (
-            <option key={item} value={item}>
-              {priceLabels[item]}
-            </option>
-          ))}
-        </select>
-        <small className="field-hint">价格档位会根据预估价格自动归类。</small>
+        <span>预估价格</span>
+        <input
+          type="number"
+          min="1"
+          step="1"
+          value={estimatedPrice}
+          onChange={(event) => handleEstimatedPriceChange(Number(event.target.value))}
+          placeholder="例如：18"
+        />
       </label>
+
+      <div className="field auto-price-field">
+        <span>价格档位</span>
+        <div className="auto-price-badge" aria-live="polite">自动归类：{autoPriceLabels[inferredPriceRange]}</div>
+        <small className="field-hint">根据预估价格实时计算，用来匹配预算筛选。</small>
+      </div>
 
       <label className="field">
         <span>距离</span>
@@ -157,18 +168,6 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
             </option>
           ))}
         </select>
-      </label>
-
-      <label className="field">
-        <span>预估价格</span>
-        <input
-          type="number"
-          min="1"
-          step="1"
-          value={estimatedPrice}
-          onChange={(event) => handleEstimatedPriceChange(Number(event.target.value))}
-          placeholder="例如：18"
-        />
       </label>
 
       <label className="field">

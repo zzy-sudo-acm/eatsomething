@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { BadgeCheck, Check, CircleDollarSign, MapPin, MessageCircle, ShieldAlert } from 'lucide-react';
 import { Feedback, Recommendation } from '../types';
 import { feedbackLabels, foodDistanceLabels, mealRoleLabels } from '../lib/options';
@@ -28,6 +28,8 @@ const pickConfirm = [
   '搞定，先归档为吃过；这次不打分，系统也不替你脑补。',
 ];
 
+const pickRandomLine = (lines: string[]) => lines[Math.floor(Math.random() * lines.length)];
+
 const stabilityText = (stability: string) =>
   stability === 'high' ? '高' : stability === 'medium' ? '中' : '低';
 
@@ -42,20 +44,28 @@ export function DecisionCard({
   const { food, copy } = recommendation;
   const isCouple = copy.title.includes('你俩') || copy.punchline.includes('你俩');
   const [showDebug, setShowDebug] = useState(false);
+  const [confirmLine, setConfirmLine] = useState('');
   const locked = Boolean(submittedFeedback) || picked;
+  const visibleConfirmLine = locked ? confirmLine : '';
 
-  const confirmLine = useMemo(() => {
-    if (submittedFeedback && submittedFeedback !== 'skipped') {
-      const lines = confirmCopy[submittedFeedback];
-      return lines[Math.floor(Math.random() * lines.length)];
-    }
-    if (picked) return pickConfirm[Math.floor(Math.random() * pickConfirm.length)];
-    return '';
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submittedFeedback, picked]);
+  const handleFeedbackClick = (feedback: VisibleFeedback) => {
+    if (locked) return;
+    setConfirmLine(pickRandomLine(confirmCopy[feedback]));
+    onFeedback(feedback);
+  };
+
+  const handlePickClick = () => {
+    if (locked) return;
+    setConfirmLine(pickRandomLine(pickConfirm));
+    onPick();
+  };
 
   return (
-    <article className={`decision-card anim-pop ${isCouple ? 'decision-card--couple' : ''}`}>
+    <article
+      className={`decision-card anim-pop decision-card--tone-${copy.verdictTone} ${
+        isCouple ? 'decision-card--couple' : ''
+      }`}
+    >
       <div className="decision-card__topline">
         <span>今日胃部判决单</span>
         <span className={`verdict-pill tone-${copy.verdictTone}`}>{copy.verdict}</span>
@@ -143,7 +153,7 @@ export function DecisionCard({
 
       <div className="feedback-block">
         {!locked && (
-          <button type="button" className="primary-button pick-button" onClick={onPick}>
+          <button type="button" className="primary-button pick-button" onClick={handlePickClick}>
             <Check size={19} />
             就它了，不打分
           </button>
@@ -155,14 +165,14 @@ export function DecisionCard({
               key={feedback}
               type="button"
               className={`feedback-button ${submittedFeedback === feedback ? 'is-active' : ''}`}
-              onClick={() => onFeedback(feedback)}
+              onClick={() => handleFeedbackClick(feedback)}
               disabled={locked}
             >
               {feedbackLabels[feedback]}
             </button>
           ))}
         </div>
-        {confirmLine && <div className="saved-tip">{confirmLine}</div>}
+        {visibleConfirmLine && <div className="saved-tip">{visibleConfirmLine}</div>}
       </div>
     </article>
   );
