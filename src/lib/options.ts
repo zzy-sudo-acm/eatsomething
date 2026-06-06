@@ -1,4 +1,4 @@
-import { Distance, Feedback, FoodType, PriceRange, Stability, TabKey } from '../types';
+import { Distance, Feedback, FoodType, MealRole, PriceRange, Satiety, Stability, TabKey } from '../types';
 
 export const moodOptions = [
   '懒得出门',
@@ -63,6 +63,21 @@ export const typeLabels: Record<FoodType, string> = {
   drink: '饮料',
   happy: '快乐餐',
   date: '约会餐',
+};
+
+export const mealRoleLabels: Record<MealRole, string> = {
+  main: '正餐',
+  lightMeal: '轻食',
+  addon: '加餐',
+  drink: '饮料',
+};
+
+export const satietyLabels: Record<Satiety, string> = {
+  1: '1 很轻',
+  2: '2 轻一点',
+  3: '3 刚好',
+  4: '4 顶饱',
+  5: '5 很顶',
 };
 
 export const stabilityLabels: Record<Stability, string> = {

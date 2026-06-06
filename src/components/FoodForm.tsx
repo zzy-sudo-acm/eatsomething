@@ -1,11 +1,13 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Save, X } from 'lucide-react';
-import { Distance, FoodItem, FoodType, PriceRange, Stability } from '../types';
+import { Distance, FoodItem, FoodType, MealRole, PriceRange, Satiety, Stability } from '../types';
 import {
   displayMoodLabel,
   foodDistanceLabels,
+  mealRoleLabels,
   moodOptions,
   priceLabels,
+  satietyLabels,
   stabilityLabels,
   typeLabels,
 } from '../lib/options';
@@ -20,6 +22,8 @@ interface FoodFormProps {
 const priceOptions: PriceRange[] = ['under10', 'under20', 'under50', 'any'];
 const distanceOptions: Distance[] = ['near', 'medium', 'far', 'delivery'];
 const typeOptions: FoodType[] = ['meal', 'snack', 'drink', 'happy', 'date'];
+const mealRoleOptions: MealRole[] = ['main', 'lightMeal', 'addon', 'drink'];
+const satietyOptions: Satiety[] = [1, 2, 3, 4, 5];
 const stabilityOptions: Stability[] = ['high', 'medium', 'low'];
 const foodTagOptions = [...moodOptions, '适合两个人'];
 const normalizeTags = (values: string[]) => Array.from(new Set(values.map(displayMoodLabel)));
@@ -29,6 +33,9 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
   const [priceRange, setPriceRange] = useState<PriceRange>(initial?.priceRange ?? 'under20');
   const [distance, setDistance] = useState<Distance>(initial?.distance ?? 'near');
   const [type, setType] = useState<FoodType>(initial?.type ?? 'meal');
+  const [estimatedPrice, setEstimatedPrice] = useState(initial?.estimatedPrice ?? 16);
+  const [satiety, setSatiety] = useState<Satiety>(initial?.satiety ?? 4);
+  const [mealRole, setMealRole] = useState<MealRole>(initial?.mealRole ?? 'main');
   const [tags, setTags] = useState<string[]>(() => normalizeTags(initial?.tags ?? []));
   const [spicy, setSpicy] = useState(initial?.spicy ?? false);
   const [stability, setStability] = useState<Stability>(initial?.stability ?? 'medium');
@@ -55,6 +62,9 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
       priceRange,
       distance,
       type,
+      estimatedPrice: Math.max(1, Math.round(estimatedPrice || 1)),
+      satiety,
+      mealRole,
       tags,
       spicy,
       stability,
@@ -105,6 +115,40 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
           {typeOptions.map((item) => (
             <option key={item} value={item}>
               {typeLabels[item]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="field">
+        <span>预估价格</span>
+        <input
+          type="number"
+          min="1"
+          step="1"
+          value={estimatedPrice}
+          onChange={(event) => setEstimatedPrice(Number(event.target.value))}
+          placeholder="例如：18"
+        />
+      </label>
+
+      <label className="field">
+        <span>饱腹度</span>
+        <select value={satiety} onChange={(event) => setSatiety(Number(event.target.value) as Satiety)}>
+          {satietyOptions.map((item) => (
+            <option key={item} value={item}>
+              {satietyLabels[item]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="field">
+        <span>定位</span>
+        <select value={mealRole} onChange={(event) => setMealRole(event.target.value as MealRole)}>
+          {mealRoleOptions.map((item) => (
+            <option key={item} value={item}>
+              {mealRoleLabels[item]}
             </option>
           ))}
         </select>

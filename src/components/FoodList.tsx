@@ -1,6 +1,6 @@
 import { Pencil, Flame, Trash2 } from 'lucide-react';
 import { FoodItem } from '../types';
-import { displayMoodLabel, foodDistanceLabels, priceLabels, stabilityLabels, typeLabels } from '../lib/options';
+import { displayMoodLabel, foodDistanceLabels, mealRoleLabels, stabilityLabels } from '../lib/options';
 
 interface FoodListProps {
   foods: FoodItem[];
@@ -24,8 +24,8 @@ export function FoodList({ foods, onEdit, onDelete }: FoodListProps) {
                 )}
               </div>
               <p>
-                {priceLabels[food.priceRange]} · {foodDistanceLabels[food.distance]} · {typeLabels[food.type]} · 稳定
-                {stabilityLabels[food.stability]}
+                约 {food.estimatedPrice} 元 · {mealRoleLabels[food.mealRole]} · 饱腹 {food.satiety}/5 ·{' '}
+                {foodDistanceLabels[food.distance]} · 稳定{stabilityLabels[food.stability]}
               </p>
             </div>
             <div className="food-item__actions">

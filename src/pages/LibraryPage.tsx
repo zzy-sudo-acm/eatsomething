@@ -23,13 +23,13 @@ const filters: { key: FilterKey; label: string }[] = [
 const matchFilter = (food: FoodItem, filter: FilterKey) => {
   switch (filter) {
     case 'meal':
-      return food.type === 'meal';
+      return food.mealRole === 'main' || food.mealRole === 'lightMeal';
     case 'drink':
-      return food.type === 'drink';
+      return food.mealRole === 'drink';
     case 'near':
       return food.distance === 'near';
     case 'cheap':
-      return food.priceRange === 'under10' || food.priceRange === 'under20';
+      return food.estimatedPrice <= 20;
     case 'stable':
       return food.stability === 'high';
     default:

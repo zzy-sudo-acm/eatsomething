@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { BadgeCheck, CircleDollarSign, MapPin, MessageCircle, ShieldAlert } from 'lucide-react';
 import { Feedback, Recommendation } from '../types';
-import { feedbackLabels, foodDistanceLabels, priceLabels } from '../lib/options';
+import { feedbackLabels, foodDistanceLabels, mealRoleLabels } from '../lib/options';
 
 interface DecisionCardProps {
   recommendation: Recommendation;
@@ -43,11 +43,15 @@ export function DecisionCard({ recommendation, submittedFeedback, onFeedback }: 
       <div className="meta-strip">
         <span>
           <CircleDollarSign size={15} />
-          {priceLabels[food.priceRange]}
+          约 {food.estimatedPrice} 元
         </span>
         <span>
           <MapPin size={15} />
           {foodDistanceLabels[food.distance]}
+        </span>
+        <span>
+          <BadgeCheck size={15} />
+          {mealRoleLabels[food.mealRole]} · 饱腹 {food.satiety}/5
         </span>
         <span>
           <BadgeCheck size={15} />

@@ -2,6 +2,8 @@ export type PriceRange = 'under10' | 'under20' | 'under50' | 'any';
 export type Distance = 'near' | 'medium' | 'far' | 'delivery';
 export type FoodType = 'meal' | 'snack' | 'drink' | 'happy' | 'date';
 export type Stability = 'high' | 'medium' | 'low';
+export type Satiety = 1 | 2 | 3 | 4 | 5;
+export type MealRole = 'main' | 'lightMeal' | 'addon' | 'drink';
 export type Feedback = 'worth' | 'normal' | 'regret';
 export type TabKey = 'decide' | 'library' | 'history' | 'settings';
 
@@ -11,6 +13,9 @@ export interface FoodItem {
   priceRange: PriceRange;
   distance: Distance;
   type: FoodType;
+  estimatedPrice: number;
+  satiety: Satiety;
+  mealRole: MealRole;
   tags: string[];
   spicy: boolean;
   stability: Stability;
@@ -43,6 +48,8 @@ export interface ScoredFood {
   score: number;
   reasons: string[];
   warnings: string[];
+  hardBlocked: boolean;
+  hardBlockReasons: string[];
 }
 
 export interface DecisionCopy {
