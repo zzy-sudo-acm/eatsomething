@@ -5,6 +5,7 @@ import { inferPriceRangeFromEstimatedPrice } from './options';
 const FOOD_KEY = 'mealmood.foods.v01';
 const HISTORY_KEY = 'mealmood.history.v01';
 const THEME_KEY = 'mealmood.theme.v01';
+const DEV_MODE_KEY = 'mealmood.devMode.v01';
 
 export type ThemeMode = 'day' | 'night';
 
@@ -13,6 +14,12 @@ export const loadTheme = (): ThemeMode =>
 
 export const saveTheme = (theme: ThemeMode) => {
   localStorage.setItem(THEME_KEY, theme);
+};
+
+export const loadDevMode = (): boolean => localStorage.getItem(DEV_MODE_KEY) === 'on';
+
+export const saveDevMode = (devMode: boolean) => {
+  localStorage.setItem(DEV_MODE_KEY, devMode ? 'on' : 'off');
 };
 
 const cloneDefaultFoods = (): FoodItem[] =>

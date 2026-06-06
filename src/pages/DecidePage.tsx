@@ -10,6 +10,7 @@ import { DecisionHistory, Distance, Feedback, FoodItem, PriceRange, Recommendati
 interface DecidePageProps {
   foods: FoodItem[];
   history: DecisionHistory[];
+  devMode: boolean;
   onAddHistory: (entry: DecisionHistory) => void;
 }
 
@@ -28,7 +29,7 @@ const rejudgeLines = ['换一个', '不服，再判一次', '再给我一个答�
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export function DecidePage({ foods, history, onAddHistory }: DecidePageProps) {
+export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePageProps) {
   const [selectedMoods, setSelectedMoods] = useState<string[]>(['不知道想吃啥']);
   const [partnerMoods, setPartnerMoods] = useState<string[]>([]);
   const [budget, setBudget] = useState<PriceRange>('under20');
@@ -199,7 +200,12 @@ export function DecidePage({ foods, history, onAddHistory }: DecidePageProps) {
       </section>
 
       {recommendation && !isDeciding && (
-        <DecisionCard recommendation={recommendation} submittedFeedback={submittedFeedback} onFeedback={handleFeedback} />
+        <DecisionCard
+          recommendation={recommendation}
+          submittedFeedback={submittedFeedback}
+          devMode={devMode}
+          onFeedback={handleFeedback}
+        />
       )}
 
       {!canDecide && (

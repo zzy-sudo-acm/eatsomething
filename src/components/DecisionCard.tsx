@@ -6,6 +6,7 @@ import { feedbackLabels, foodDistanceLabels, mealRoleLabels } from '../lib/optio
 interface DecisionCardProps {
   recommendation: Recommendation;
   submittedFeedback?: Feedback;
+  devMode?: boolean;
   onFeedback: (feedback: Feedback) => void;
 }
 
@@ -22,7 +23,7 @@ const confirmCopy: Record<VisibleFeedback, string[]> = {
 const stabilityText = (stability: string) =>
   stability === 'high' ? '高' : stability === 'medium' ? '中' : '低';
 
-export function DecisionCard({ recommendation, submittedFeedback, onFeedback }: DecisionCardProps) {
+export function DecisionCard({ recommendation, submittedFeedback, devMode = false, onFeedback }: DecisionCardProps) {
   const { food, copy } = recommendation;
   const isCouple = copy.title.includes('你俩') || copy.punchline.includes('你俩');
   const [showDebug, setShowDebug] = useState(false);
@@ -84,6 +85,7 @@ export function DecisionCard({ recommendation, submittedFeedback, onFeedback }: 
         <span>{copy.punchline}</span>
       </div>
 
+      {devMode && (
       <div className="recommend-debug">
         <button
           type="button"
@@ -118,6 +120,7 @@ export function DecisionCard({ recommendation, submittedFeedback, onFeedback }: 
           </div>
         )}
       </div>
+      )}
 
       <div className="feedback-block">
         <div className="feedback-label">吃完了？给系统一句胃部证词：</div>

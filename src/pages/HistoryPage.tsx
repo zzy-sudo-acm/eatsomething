@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Trophy, RotateCcw, Siren, Utensils } from 'lucide-react';
 import { HistoryList } from '../components/HistoryList';
 import { DecisionHistory } from '../types';
@@ -5,6 +6,20 @@ import { DecisionHistory } from '../types';
 interface HistoryPageProps {
   history: DecisionHistory[];
 }
+
+type HistoryFilter = 'eaten' | 'skipped' | 'all';
+
+const historyFilters: { key: HistoryFilter; label: string }[] = [
+  { key: 'eaten', label: '吃过' },
+  { key: 'skipped', label: '已跳过' },
+  { key: 'all', label: '全部' },
+];
+
+const emptyCopy: Record<HistoryFilter, string> = {
+  eaten: '还没有吃过的记录。先选一个、吃一口、再回来打个分。',
+  skipped: '还没有跳过记录。看来你这次很果断。',
+  all: '还没有任何记录。先去做一次决定吧。',
+};
 
 const topRepeated = (history: DecisionHistory[]) => {
   const recent = history.filter((item) => item.feedback !== 'skipped').slice(0, 20);
@@ -25,6 +40,8 @@ const repeatWarning = (history: DecisionHistory[]) => {
 };
 
 export function HistoryPage({ history }: HistoryPageProps) {
+  const [filter, setFilter] = useState<HistoryFilter>('eaten');
+
   if (!history.length) {
     return (
       <div className="page">
@@ -48,6 +65,14 @@ export function HistoryPage({ history }: HistoryPageProps) {
   const recentNames = eatenHistory.slice(0, 4).map((item) => item.foodName);
   const worth = history.find((item) => item.feedback === 'worth');
   const regret = history.find((item) => item.feedback === 'regret');
+
+  const skippedCount = history.length - eatenHistory.length;
+  const filteredHistory =
+    filter === 'eaten'
+      ? eatenHistory
+      : filter === 'skipped'
+        ? history.filter((item) => item.feedback === 'skipped')
+        : history;
 
   return (
     <div className="page">
@@ -81,7 +106,29 @@ export function HistoryPage({ history }: HistoryPageProps) {
         </div>
       </section>
 
-      <HistoryList history={history} />
+      <div className="filter-row" role="group" aria-label="历史筛选">
+        {historyFilters.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`chip chip--small ${filter === item.key ? 'is-selected' : ''}`}
+            aria-pressed={filter === item.key}
+            onClick={() => setFilter(item.key)}
+          >
+            {item.label}
+            {item.key === 'skipped' && skippedCount > 0 ? ` ${skippedCount}` : ''}
+          </button>
+        ))}
+      </div>
+
+      {filteredHistory.length ? (
+        <HistoryList history={filteredHistory} />
+      ) : (
+        <div className="empty-state">
+          <span className="empty-emoji">🍽️</span>
+          {emptyCopy[filter]}
+        </div>
+      )}
     </div>
   );
 }

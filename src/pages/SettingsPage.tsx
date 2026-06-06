@@ -1,5 +1,5 @@
 import { ChangeEvent, useMemo, useState } from 'react';
-import { ChevronDown, Copy, Download, Moon, RotateCcw, Trash2, Upload } from 'lucide-react';
+import { ChevronDown, Copy, Download, Moon, RotateCcw, Trash2, Upload, Wrench } from 'lucide-react';
 import { resetFoods, ThemeMode } from '../lib/storage';
 import { DecisionHistory, FoodItem } from '../types';
 import { runRecommendationScenarios, type RecommendationScenarioReport } from '../lib/recommendationScenarios';
@@ -7,7 +7,9 @@ import { runRecommendationScenarios, type RecommendationScenarioReport } from '.
 interface SettingsPageProps {
   foods: FoodItem[];
   theme: ThemeMode;
+  devMode: boolean;
   onChangeTheme: (theme: ThemeMode) => void;
+  onChangeDevMode: (devMode: boolean) => void;
   onSaveFoods: (foods: FoodItem[]) => void;
   onSaveHistory: (history: DecisionHistory[]) => void;
 }
@@ -24,7 +26,15 @@ const isFoodArray = (value: unknown): value is FoodItem[] => {
   );
 };
 
-export function SettingsPage({ foods, theme, onChangeTheme, onSaveFoods, onSaveHistory }: SettingsPageProps) {
+export function SettingsPage({
+  foods,
+  theme,
+  devMode,
+  onChangeTheme,
+  onChangeDevMode,
+  onSaveFoods,
+  onSaveHistory,
+}: SettingsPageProps) {
   const [importText, setImportText] = useState('');
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
@@ -179,41 +189,63 @@ export function SettingsPage({ foods, theme, onChangeTheme, onSaveFoods, onSaveH
       </section>
 
       <section className="settings-section">
-        <button
-          type="button"
-          className={`advanced-toggle ${showRecommendationCheck ? 'is-open' : ''}`}
-          aria-expanded={showRecommendationCheck}
-          onClick={() => setShowRecommendationCheck((value) => !value)}
-        >
-          推荐自检
-          <ChevronDown size={18} />
-        </button>
-        {showRecommendationCheck && (
-          <div className="scenario-check">
-            <button type="button" className="settings-button" onClick={handleRunRecommendationCheck}>
-              运行推荐自检
-            </button>
-            {scenarioReport && (
-              <div className="scenario-report">
-                <div className="scenario-summary">
-                  {scenarioReport.passed}/{scenarioReport.total} 通过
-                </div>
-                {scenarioReport.results.map((result) => (
-                  <div className="scenario-row" key={result.id}>
-                    <b className={result.passed ? 'scenario-pass' : 'scenario-fail'}>
-                      {result.passed ? '通过' : '失败'}
-                    </b>
-                    <div>
-                      <strong>{result.name}</strong>
-                      <p>{result.details}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        <div className="theme-toggle-row">
+          <div className="theme-copy">
+            <b>开发者模式</b>
+            <small>显示推荐依据和推荐自检，给折腾型选手用</small>
           </div>
-        )}
+          <button
+            type="button"
+            className={`bare-switch ${devMode ? 'is-on' : ''}`}
+            role="switch"
+            aria-checked={devMode}
+            aria-label="开发者模式"
+            onClick={() => onChangeDevMode(!devMode)}
+          >
+            <Wrench size={15} aria-hidden="true" />
+            <span className="switch-track" aria-hidden="true" />
+          </button>
+        </div>
       </section>
+
+      {devMode && (
+        <section className="settings-section">
+          <button
+            type="button"
+            className={`advanced-toggle ${showRecommendationCheck ? 'is-open' : ''}`}
+            aria-expanded={showRecommendationCheck}
+            onClick={() => setShowRecommendationCheck((value) => !value)}
+          >
+            推荐自检
+            <ChevronDown size={18} />
+          </button>
+          {showRecommendationCheck && (
+            <div className="scenario-check">
+              <button type="button" className="settings-button" onClick={handleRunRecommendationCheck}>
+                运行推荐自检
+              </button>
+              {scenarioReport && (
+                <div className="scenario-report">
+                  <div className="scenario-summary">
+                    {scenarioReport.passed}/{scenarioReport.total} 通过
+                  </div>
+                  {scenarioReport.results.map((result) => (
+                    <div className="scenario-row" key={result.id}>
+                      <b className={result.passed ? 'scenario-pass' : 'scenario-fail'}>
+                        {result.passed ? '通过' : '失败'}
+                      </b>
+                      <div>
+                        <strong>{result.name}</strong>
+                        <p>{result.details}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="settings-section">
         <button

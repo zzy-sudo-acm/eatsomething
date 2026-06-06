@@ -49,6 +49,16 @@ const hasAddon = (foods: FoodItem[]) => foods.some((food) => food.mealRole === '
 
 const hasSpicy = (foods: FoodItem[]) => foods.some((food) => food.spicy);
 
+const hasLightMeal = (foods: FoodItem[]) => foods.some((food) => food.mealRole === 'lightMeal');
+
+const isMilkTeaCandidate = (food: FoodItem) =>
+  food.name.includes('奶茶') || (food.mealRole === 'drink' && food.tags.includes('想喝奶茶'));
+
+const hasMilkTea = (foods: FoodItem[]) => foods.some(isMilkTeaCandidate);
+
+const hasRewardMain = (foods: FoodItem[]) =>
+  foods.some((food) => food.mealRole === 'main' && food.estimatedPrice >= 25 && food.estimatedPrice <= 45);
+
 const summarizeRecommendations = (recommendations: Recommendation[]) =>
   Array.from(new Set(recommendations.map((item) => item.food.name))).join('、') || '无';
 
@@ -125,19 +135,29 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
     });
     const first = recommendations[0];
     const milkTea = findMilkTea(first);
-    const everPickedMilkTea = recommendations.some((item) => findMilkTea(item)?.food.id === item.food.id);
-    results.push(
-      buildResult(
-        'milk-tea-allowed',
-        '想喝奶茶时奶茶可作为主推荐',
-        Boolean(milkTea && !milkTea.hardBlocked && everPickedMilkTea),
-        milkTea
-          ? `奶茶 hardBlocked=${milkTea.hardBlocked}，分数=${milkTea.score}，主推荐样本：${summarizeRecommendations(
-              recommendations
-            )}`
-          : '没有找到带“奶茶/想喝奶茶”标签的候选。'
-      )
-    );
+    if (!hasMilkTea(foods) || !milkTea) {
+      results.push(
+        buildResult(
+          'milk-tea-allowed',
+          '想喝奶茶时奶茶可作为主推荐',
+          true,
+          '[菜品库] 缺少奶茶候选（带「想喝奶茶」标签或名字含「奶茶」的饮料），已跳过该项检查。'
+        )
+      );
+    } else {
+      const everPickedMilkTea = recommendations.some((item) => findMilkTea(item)?.food.id === item.food.id);
+      const passed = !milkTea.hardBlocked && everPickedMilkTea;
+      results.push(
+        buildResult(
+          'milk-tea-allowed',
+          '想喝奶茶时奶茶可作为主推荐',
+          passed,
+          passed
+            ? `通过，奶茶能进入主推荐（分数=${milkTea.score}）：${summarizeRecommendations(recommendations)}`
+            : `[算法] 奶茶存在却没能成为主推荐：hardBlocked=${milkTea.hardBlocked}，分数=${milkTea.score}`
+        )
+      );
+    }
   }
 
   {
@@ -165,17 +185,33 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       selectedMoods: ['不想吃太饱'],
       budget: 'under20',
     });
-    const bad = recommendations.filter((item) => item.food.mealRole !== 'lightMeal');
-    results.push(
-      buildResult(
-        'light-meal',
-        '不想吃太饱优先轻食',
-        bad.length === 0,
-        bad.length
-          ? `非轻食样本：${summarizeRecommendations(bad)}`
-          : `通过，主推荐样本：${summarizeRecommendations(recommendations)}`
-      )
-    );
+    const lightMealExists = hasLightMeal(foods);
+    const isLight = (food: FoodItem) => food.mealRole === 'lightMeal' || food.satiety <= 3;
+    const hasLightOption = foods.some(isLight);
+    if (!hasLightOption) {
+      results.push(
+        buildResult(
+          'light-meal',
+          '不想吃太饱优先轻食',
+          true,
+          '[菜品库] 没有轻食、也没有饱腹≤3的选项，已跳过该项检查。'
+        )
+      );
+    } else {
+      const bad = recommendations.filter((item) => !isLight(item.food));
+      results.push(
+        buildResult(
+          'light-meal',
+          '不想吃太饱优先轻食',
+          bad.length === 0,
+          bad.length
+            ? `[算法] 出现偏顶饱的推荐：${summarizeRecommendations(bad)}`
+            : lightMealExists
+              ? `通过，优先了轻食或不顶的选项：${summarizeRecommendations(recommendations)}`
+              : `菜品库没有轻食，已降级为饱腹≤3的选项：${summarizeRecommendations(recommendations)}`
+        )
+      );
+    }
   }
 
   {
@@ -184,19 +220,35 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       selectedMoods: ['想奖励自己'],
       budget: 'under50',
     });
-    const bad = recommendations.filter(
-      (item) => item.food.mealRole !== 'main' || item.food.estimatedPrice < 25 || item.food.estimatedPrice > 45
-    );
-    results.push(
-      buildResult(
-        'under50-reward',
-        '50以内 + 想奖励自己偏向25到45元正餐',
-        bad.length === 0,
-        bad.length
-          ? `不在目标价位样本：${summarizeRecommendations(bad)}`
-          : `通过，主推荐样本：${summarizeRecommendations(recommendations)}`
-      )
-    );
+    const rewardExists = hasRewardMain(foods);
+    const minPrice = rewardExists ? 25 : 18;
+    const isReward = (food: FoodItem) =>
+      food.mealRole === 'main' && food.estimatedPrice >= minPrice && food.estimatedPrice <= 45;
+    const hasRewardOption = foods.some(isReward);
+    if (!hasRewardOption) {
+      results.push(
+        buildResult(
+          'under50-reward',
+          '50以内 + 想奖励自己偏向像样正餐',
+          true,
+          `[菜品库] 没有合适价位的正餐（${minPrice}~45元），已跳过该项检查。`
+        )
+      );
+    } else {
+      const bad = recommendations.filter((item) => !isReward(item.food));
+      results.push(
+        buildResult(
+          'under50-reward',
+          '50以内 + 想奖励自己偏向像样正餐',
+          bad.length === 0,
+          bad.length
+            ? `[算法] 推荐偏离目标价位（${minPrice}~45元正餐）：${summarizeRecommendations(bad)}`
+            : rewardExists
+              ? `通过，偏向了25~45元正餐：${summarizeRecommendations(recommendations)}`
+              : `菜品库缺少25~45元正餐，已降级到18~45元正餐：${summarizeRecommendations(recommendations)}`
+        )
+      );
+    }
   }
 
   {

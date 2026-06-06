@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
 import { BottomTabs } from './components/BottomTabs';
-import { loadFoods, loadHistory, loadTheme, saveFoods, saveHistory, saveTheme, ThemeMode } from './lib/storage';
+import {
+  loadDevMode,
+  loadFoods,
+  loadHistory,
+  loadTheme,
+  saveDevMode,
+  saveFoods,
+  saveHistory,
+  saveTheme,
+  ThemeMode,
+} from './lib/storage';
 import { DecidePage } from './pages/DecidePage';
 import { HistoryPage } from './pages/HistoryPage';
 import { LibraryPage } from './pages/LibraryPage';
@@ -12,6 +22,7 @@ export default function App() {
   const [foods, setFoods] = useState<FoodItem[]>(() => loadFoods());
   const [history, setHistory] = useState<DecisionHistory[]>(() => loadHistory());
   const [theme, setTheme] = useState<ThemeMode>(() => loadTheme());
+  const [devMode, setDevMode] = useState<boolean>(() => loadDevMode());
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -23,6 +34,11 @@ export default function App() {
   const updateTheme = (next: ThemeMode) => {
     setTheme(next);
     saveTheme(next);
+  };
+
+  const updateDevMode = (next: boolean) => {
+    setDevMode(next);
+    saveDevMode(next);
   };
 
   const updateFoods = (next: FoodItem[]) => {
@@ -42,14 +58,18 @@ export default function App() {
   return (
     <div className="app-shell">
       <main>
-        {activeTab === 'decide' && <DecidePage foods={foods} history={history} onAddHistory={addHistoryEntry} />}
+        {activeTab === 'decide' && (
+          <DecidePage foods={foods} history={history} devMode={devMode} onAddHistory={addHistoryEntry} />
+        )}
         {activeTab === 'library' && <LibraryPage foods={foods} onSaveFoods={updateFoods} />}
         {activeTab === 'history' && <HistoryPage history={history} />}
         {activeTab === 'settings' && (
           <SettingsPage
             foods={foods}
             theme={theme}
+            devMode={devMode}
             onChangeTheme={updateTheme}
+            onChangeDevMode={updateDevMode}
             onSaveFoods={updateFoods}
             onSaveHistory={updateHistory}
           />
