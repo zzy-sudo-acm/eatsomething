@@ -22,7 +22,7 @@ const stabilityText = (stability: string) =>
 
 export function DecisionCard({ recommendation, submittedFeedback, onFeedback }: DecisionCardProps) {
   const { food, copy } = recommendation;
-  const isCouple = copy.punchline.includes('你俩');
+  const isCouple = copy.title.includes('你俩') || copy.punchline.includes('你俩');
 
   const confirmLine = useMemo(() => {
     if (!submittedFeedback) return '';

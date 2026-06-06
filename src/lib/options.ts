@@ -5,7 +5,6 @@ export const moodOptions = [
   '想省钱',
   '想奖励自己',
   '饿疯了',
-  '和女友一起',
   '不知道想吃啥',
   '不想吃辣',
   '想吃热的',
@@ -25,9 +24,17 @@ export const primaryMoodOptions = [
   '饿疯了',
   '不知道想吃啥',
   '不想吃辣',
-  '和女友一起',
   '刚考完',
 ];
+
+export const relationshipMoodAliases = ['和女友一起'];
+export const coupleFriendlyTags = ['适合两个人', ...relationshipMoodAliases];
+
+export const isRelationshipMood = (mood: string) => relationshipMoodAliases.includes(mood);
+
+export const stripRelationshipMoods = (moods: string[]) => moods.filter((mood) => !isRelationshipMood(mood));
+
+export const displayMoodLabel = (mood: string) => (isRelationshipMood(mood) ? '适合两个人' : mood);
 
 export const priceLabels: Record<PriceRange, string> = {
   under10: '10以内',

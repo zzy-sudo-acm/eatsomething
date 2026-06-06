@@ -1,6 +1,6 @@
 import { Clock3 } from 'lucide-react';
 import { DecisionHistory } from '../types';
-import { distanceLabels, feedbackLabels, priceLabels } from '../lib/options';
+import { displayMoodLabel, distanceLabels, feedbackLabels, priceLabels } from '../lib/options';
 
 interface HistoryListProps {
   history: DecisionHistory[];
@@ -39,7 +39,10 @@ export function HistoryList({ history }: HistoryListProps) {
               {item.feedback ? feedbackLabels[item.feedback] : '未反馈'}
             </span>
           </div>
-          <p>{[...item.selectedMoods, ...(item.partnerMoods ?? [])].slice(0, 5).join(' / ') || '随缘局'}</p>
+          <p>
+            {[...item.selectedMoods, ...(item.partnerMoods ?? [])].slice(0, 5).map(displayMoodLabel).join(' / ') ||
+              '随缘局'}
+          </p>
         </article>
       ))}
     </div>

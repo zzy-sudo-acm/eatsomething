@@ -1,6 +1,6 @@
 import { Pencil, Flame, Trash2 } from 'lucide-react';
 import { FoodItem } from '../types';
-import { foodDistanceLabels, priceLabels, stabilityLabels, typeLabels } from '../lib/options';
+import { displayMoodLabel, foodDistanceLabels, priceLabels, stabilityLabels, typeLabels } from '../lib/options';
 
 interface FoodListProps {
   foods: FoodItem[];
@@ -46,7 +46,7 @@ export function FoodList({ foods, onEdit, onDelete }: FoodListProps) {
           {food.tags.length > 0 && (
             <div className="food-tags">
               {food.tags.slice(0, 5).map((tag) => (
-                <span key={tag}>{tag}</span>
+                <span key={tag}>{displayMoodLabel(tag)}</span>
               ))}
             </div>
           )}

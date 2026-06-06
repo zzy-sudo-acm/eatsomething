@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { HeartHandshake, RefreshCw, Sparkles } from 'lucide-react';
 import { DecisionCard } from '../components/DecisionCard';
 import { MoodSelector } from '../components/MoodSelector';
-import { distanceLabels, moodOptions, primaryMoodOptions, priceLabels } from '../lib/options';
+import { distanceLabels, moodOptions, primaryMoodOptions, priceLabels, stripRelationshipMoods } from '../lib/options';
 import { makeId } from '../lib/storage';
 import { recommendFood } from '../lib/recommend';
 import { DecisionHistory, Distance, Feedback, FoodItem, PriceRange, Recommendation } from '../types';
@@ -42,25 +42,23 @@ export function DecidePage({ foods, history, onAddHistory }: DecidePageProps) {
   const timerRef = useRef<number | undefined>(undefined);
 
   const canDecide = foods.length > 0;
+  const cleanSelectedMoods = useMemo(() => stripRelationshipMoods(selectedMoods), [selectedMoods]);
+  const cleanPartnerMoods = useMemo(() => stripRelationshipMoods(partnerMoods), [partnerMoods]);
   const selectedSummary = useMemo(
-    () => [...selectedMoods, ...(coupleMode ? partnerMoods : [])],
-    [coupleMode, partnerMoods, selectedMoods]
+    () => [...cleanSelectedMoods, ...(coupleMode ? cleanPartnerMoods : [])],
+    [cleanPartnerMoods, cleanSelectedMoods, coupleMode]
   );
 
   const toggleCouple = () => {
-    setCoupleMode((prev) => {
-      const next = !prev;
-      if (next && !selectedMoods.includes('和女友一起')) {
-        setSelectedMoods((moods) => [...moods, '和女友一起']);
-      }
-      return next;
-    });
+    setSelectedMoods(stripRelationshipMoods);
+    setPartnerMoods(stripRelationshipMoods);
+    setCoupleMode((prev) => !prev);
   };
 
   const runRecommendation = () => {
     const next = recommendFood(foods, history, {
-      selectedMoods,
-      partnerMoods: coupleMode ? partnerMoods : undefined,
+      selectedMoods: cleanSelectedMoods,
+      partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
       budget,
       distance,
       coupleMode,
@@ -93,8 +91,8 @@ export function DecidePage({ foods, history, onAddHistory }: DecidePageProps) {
       id: makeId('history'),
       foodId: recommendation.food.id,
       foodName: recommendation.food.name,
-      selectedMoods,
-      partnerMoods: coupleMode ? partnerMoods : undefined,
+      selectedMoods: cleanSelectedMoods,
+      partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
       budget,
       distance,
       feedback,
@@ -128,16 +126,16 @@ export function DecidePage({ foods, history, onAddHistory }: DecidePageProps) {
         title={coupleMode ? '你现在' : '现在的状态'}
         options={moodOptions}
         primary={primaryMoodOptions}
-        selected={selectedMoods}
+        selected={cleanSelectedMoods}
         onChange={setSelectedMoods}
       />
 
       {coupleMode && (
         <MoodSelector
-          title="她现在"
+          title="对方现在"
           options={moodOptions}
           primary={primaryMoodOptions}
-          selected={partnerMoods}
+          selected={cleanPartnerMoods}
           onChange={setPartnerMoods}
         />
       )}

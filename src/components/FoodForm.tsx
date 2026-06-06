@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { Save, X } from 'lucide-react';
 import { Distance, FoodItem, FoodType, PriceRange, Stability } from '../types';
 import {
+  displayMoodLabel,
   foodDistanceLabels,
   moodOptions,
   priceLabels,
@@ -20,13 +21,15 @@ const priceOptions: PriceRange[] = ['under10', 'under20', 'under50', 'any'];
 const distanceOptions: Distance[] = ['near', 'medium', 'far', 'delivery'];
 const typeOptions: FoodType[] = ['meal', 'snack', 'drink', 'happy', 'date'];
 const stabilityOptions: Stability[] = ['high', 'medium', 'low'];
+const foodTagOptions = [...moodOptions, '适合两个人'];
+const normalizeTags = (values: string[]) => Array.from(new Set(values.map(displayMoodLabel)));
 
 export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
   const [name, setName] = useState(initial?.name ?? '');
   const [priceRange, setPriceRange] = useState<PriceRange>(initial?.priceRange ?? 'under20');
   const [distance, setDistance] = useState<Distance>(initial?.distance ?? 'near');
   const [type, setType] = useState<FoodType>(initial?.type ?? 'meal');
-  const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
+  const [tags, setTags] = useState<string[]>(() => normalizeTags(initial?.tags ?? []));
   const [spicy, setSpicy] = useState(initial?.spicy ?? false);
   const [stability, setStability] = useState<Stability>(initial?.stability ?? 'medium');
 
@@ -126,7 +129,7 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
       <div className="form-tags">
         <span>标签</span>
         <div className="chip-grid">
-          {moodOptions.map((tag) => (
+          {foodTagOptions.map((tag) => (
             <button
               key={tag}
               type="button"

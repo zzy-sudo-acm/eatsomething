@@ -7,16 +7,176 @@ import {
   Recommendation,
   ScoredFood,
 } from '../types';
-import { distanceLabels, foodDistanceLabels, priceLabels, priceOrder, stabilityLabels } from './options';
+import {
+  coupleFriendlyTags,
+  distanceLabels,
+  foodDistanceLabels,
+  isRelationshipMood,
+  priceLabels,
+  stabilityLabels,
+} from './options';
 
 const dayMs = 24 * 60 * 60 * 1000;
+const primaryTypes: FoodItem['type'][] = ['meal', 'happy', 'date'];
+const drinkPrimaryMoods = ['想喝点东西', '想喝奶茶', '不想吃太饱'];
 
 const unique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
 
-const budgetScore = (selected: PriceRange, food: FoodItem): number => {
-  if (selected === 'any') return 6;
-  if (food.priceRange === 'any') return 2;
-  return priceOrder[food.priceRange] <= priceOrder[selected] ? 10 : -8;
+const isPrimaryType = (food: FoodItem) => primaryTypes.includes(food.type);
+
+const hasDrinkNeed = (moods: string[]) => drinkPrimaryMoods.some((mood) => moods.includes(mood));
+
+const hasSnackNeed = (input: DecisionInput, moods: string[], food: FoodItem) => {
+  if (food.type !== 'snack') return false;
+  if (moods.includes('不想吃太饱') && food.tags.includes('不想吃太饱')) return true;
+  if (input.budget === 'under10' && moods.includes('想省钱') && food.priceRange === 'under10') return true;
+  return moods.includes('不想排队') && food.tags.includes('不想排队');
+};
+
+const isCoupleFriendlyFood = (food: FoodItem) => food.tags.some((tag) => coupleFriendlyTags.includes(tag));
+
+const canBeMainRecommendation = (food: FoodItem, input: DecisionInput, moods: string[]) => {
+  if (isPrimaryType(food)) return true;
+  if (food.type === 'drink') return hasDrinkNeed(moods);
+  if (food.type === 'snack') return hasSnackNeed(input, moods, food) && !moods.includes('饿疯了');
+  return false;
+};
+
+const budgetScore = (selected: PriceRange, food: FoodItem, moods: string[]): number => {
+  if (selected === 'any') return 0;
+
+  const saving = moods.includes('想省钱');
+
+  if (selected === 'under10') {
+    if (food.priceRange === 'under10') return 20;
+    if (food.priceRange === 'under20') return 6;
+    if (food.priceRange === 'under50') return -12;
+    return -4;
+  }
+
+  if (selected === 'under20') {
+    if (food.priceRange === 'under20') return 18;
+    if (food.priceRange === 'under10') return 10;
+    if (food.priceRange === 'under50') return -6;
+    return 0;
+  }
+
+  if (food.priceRange === 'under50') return 22;
+  if (food.priceRange === 'under20') return isPrimaryType(food) ? 4 : -2;
+  if (food.priceRange === 'under10') return saving ? 5 : -10;
+  return 0;
+};
+
+const typeMoodScore = (
+  food: FoodItem,
+  input: DecisionInput,
+  moods: string[]
+): { score: number; reasons: string[]; warnings: string[] } => {
+  let score = 0;
+  const reasons: string[] = [];
+  const warnings: string[] = [];
+  const drinkNeed = hasDrinkNeed(moods);
+  const snackNeed = hasSnackNeed(input, moods, food);
+
+  if (input.budget === 'under50') {
+    if (isPrimaryType(food)) {
+      score += 8;
+      reasons.push('50以内优先吃像样一点');
+    } else if ((food.type === 'drink' && !drinkNeed) || (food.type === 'snack' && !snackNeed)) {
+      score -= 6;
+      warnings.push('50以内不是低价凑数');
+    }
+  }
+
+  if (food.type === 'drink' && !drinkNeed) {
+    score -= 24;
+    warnings.push('没有明确想喝');
+  }
+
+  if (food.type === 'snack' && !snackNeed) {
+    score -= 8;
+    warnings.push('小吃不适合当主餐');
+  }
+
+  if (moods.includes('饿疯了')) {
+    if (isPrimaryType(food)) {
+      score += 14;
+      reasons.push('能当正餐');
+    }
+    if (food.type === 'drink') {
+      score -= 32;
+      warnings.push('饿疯了不能只喝');
+    }
+    if (food.type === 'snack') {
+      score -= 14;
+      warnings.push('小吃不够顶');
+    }
+    if (food.stability === 'high') {
+      score += 5;
+      reasons.push('饿的时候先吃稳的');
+    }
+  }
+
+  if (drinkNeed && food.type === 'drink') {
+    score += 34;
+    reasons.push('明确想喝');
+  }
+
+  if (moods.includes('想奖励自己')) {
+    if (food.type === 'happy' || food.type === 'date') {
+      score += 16;
+      reasons.push('奖励感更足');
+    }
+    if (food.priceRange === 'under50') {
+      score += 8;
+      reasons.push('今天值得吃好点');
+    }
+    if (food.priceRange === 'under10') {
+      score -= 8;
+      warnings.push('太省不够奖励');
+    }
+  }
+
+  if (input.coupleMode) {
+    if (isCoupleFriendlyFood(food)) {
+      score += 8;
+      reasons.push('适合两个人');
+    }
+    if (food.type === 'date') {
+      score += 12;
+      reasons.push('适合两个人');
+    }
+    if (food.type === 'happy') {
+      score += 8;
+      reasons.push('共享快乐餐');
+    }
+    if (food.type === 'drink') {
+      score += 8;
+      reasons.push('可以作为约会加餐');
+    }
+  }
+
+  if (moods.includes('不知道想吃啥')) {
+    if (isPrimaryType(food) && food.stability === 'high') {
+      score += 10;
+      reasons.push('不知道时选高稳定正餐');
+    } else if (isPrimaryType(food)) {
+      score += 4;
+      reasons.push('不知道时先按正餐来');
+    }
+
+    if (food.stability === 'low') {
+      score -= 12;
+      warnings.push('不知道时不适合冒险');
+    }
+
+    if (food.type === 'drink' || food.type === 'snack') {
+      score -= 6;
+      warnings.push('不知道时不拿饮料小吃当答案');
+    }
+  }
+
+  return { score, reasons, warnings };
 };
 
 const distanceScore = (selected: DecisionInput['distance'], food: FoodItem): number => {
@@ -75,6 +235,16 @@ const pickWeighted = (items: ScoredFood[]) => {
   return weighted[0].item;
 };
 
+const chooseMainRecommendation = (picked: ScoredFood, scoredFoods: ScoredFood[], input: DecisionInput, moods: string[]) => {
+  if (canBeMainRecommendation(picked.food, input, moods)) return picked;
+
+  const fallback = scoredFoods.find(
+    (item) => canBeMainRecommendation(item.food, input, moods) && item.score >= picked.score - 15
+  );
+
+  return fallback ?? picked;
+};
+
 const formatList = (values: string[], fallback: string) => {
   if (!values.length) return fallback;
   if (values.length <= 3) return values.join('、');
@@ -101,13 +271,15 @@ const buildCopy = (
   alternatives: FoodItem[],
   history: DecisionHistory[]
 ): Recommendation['copy'] => {
-  const moods = unique(input.selectedMoods);
-  const partnerMoods = unique(input.partnerMoods ?? []);
+  const moods = unique(input.selectedMoods).filter((mood) => !isRelationshipMood(mood));
+  const partnerMoods = unique(input.partnerMoods ?? []).filter((mood) => !isRelationshipMood(mood));
   const allMoods = unique([...moods, ...partnerMoods]);
   const food = picked.food;
   const matched = allMoods.filter((mood) => food.tags.includes(mood));
   const recentTime = getLatestFoodTime(history, food.id);
   const ateRecently = recentTime && Date.now() - recentTime < 7 * dayMs;
+  const drinkAlternative = alternatives.find((item) => item.type === 'drink');
+  const shouldTreatDrinkAsAddOn = drinkAlternative && food.type !== 'drink' && !hasDrinkNeed(allMoods);
 
   let title = '别折腾，今天吃稳的';
   if (input.coupleMode) title = '给你俩选了个不容易吵架的';
@@ -119,10 +291,10 @@ const buildCopy = (
   // Reason: written like a friend talking, not a rule dump.
   let reason: string;
   if (input.coupleMode) {
-    const selfPart = formatList(moods.filter((m) => m !== '和女友一起'), '没什么特别要求');
-    const partnerPart = partnerMoods.length ? formatList(partnerMoods.filter((m) => m !== '和女友一起'), '随缘') : '随缘';
+    const selfPart = formatList(moods, '没什么特别要求');
+    const partnerPart = partnerMoods.length ? formatList(partnerMoods, '随缘') : '随缘';
     reason =
-      `你这边${selfPart}，她那边${partnerPart}，两边胃口合并之后，${food.name}是那个谁都不太会翻脸的答案。` +
+      `你这边${selfPart}，对方那边${partnerPart}，两边胃口合并之后，${food.name}是那个谁都不太会翻脸的答案。` +
       `预算压在${priceLabels[food.priceRange]}，${foodDistanceLabels[food.distance]}就能解决，不用为了一顿饭走太远。`;
   } else {
     const opener = matched.length
@@ -134,6 +306,11 @@ const buildCopy = (
       `你要的本来就不是惊喜，是一个不超预算、不用走太远、还不容易难吃的答案，它都占了。`,
     ]);
     reason = `${opener}${why}`;
+  }
+
+  if (input.budget === 'under50' && food.type !== 'drink') {
+    reason +=
+      '你今天预算给得比较松，可以吃得像样一点；这不是最低价方案，是今天相对值得的方案。系统也没有让你拿 50 的预算去喝一杯奶茶。';
   }
 
   // Risk: human, not a clause list.
@@ -161,6 +338,14 @@ const buildCopy = (
   ];
 
   const { verdict, verdictTone } = getVerdict(picked.score, food, input);
+  const punchline = shouldTreatDrinkAsAddOn
+    ? pick([
+        `${drinkAlternative.name}可以喝，但它不能假装自己是一顿饭。`,
+        `系统承认${drinkAlternative.name}很诱人，但你的胃表示需要主食。`,
+      ])
+    : input.coupleMode
+      ? '本轮由系统背锅，吃不好不许怪对方。你俩的胃部意见已合并，挑的是个相对不容易吵架的答案。'
+      : pick(punchlines);
 
   return {
     title,
@@ -168,9 +353,7 @@ const buildCopy = (
     verdictTone,
     reason,
     risk,
-    punchline: input.coupleMode
-      ? '本轮由系统背锅，吃不好不许怪对方。你俩的胃部意见已合并，挑的是个相对不容易吵架的答案。'
-      : pick(punchlines),
+    punchline,
     alternatives: alternatives.map((item) => item.name),
   };
 };
@@ -181,7 +364,9 @@ export const recommendFood = (
   input: DecisionInput
 ): Recommendation => {
   const now = Date.now();
-  const allMoods = unique([...(input.selectedMoods ?? []), ...(input.partnerMoods ?? [])]);
+  const allMoods = unique([...(input.selectedMoods ?? []), ...(input.partnerMoods ?? [])]).filter(
+    (mood) => !isRelationshipMood(mood)
+  );
   const scoredFoods = foods
     .map<ScoredFood>((food) => {
       let score = 10;
@@ -194,10 +379,17 @@ export const recommendFood = (
         reasons.push(`匹配 ${matchedMoods.join('、')}`);
       }
 
-      const budget = budgetScore(input.budget, food);
+      const budget = budgetScore(input.budget, food, allMoods);
       score += budget;
-      if (budget > 0) reasons.push(`预算 ${priceLabels[input.budget]}`);
-      else warnings.push('预算可能超一点');
+      if (budget > 0) reasons.push(`消费档位 ${priceLabels[input.budget]}`);
+      if (budget < 0) {
+        warnings.push(input.budget === 'under50' ? '今天不是最低价优先' : '预算档位不太合适');
+      }
+
+      const typeMood = typeMoodScore(food, input, allMoods);
+      score += typeMood.score;
+      reasons.push(...typeMood.reasons);
+      warnings.push(...typeMood.warnings);
 
       const distance = distanceScore(input.distance, food);
       score += distance;
@@ -237,7 +429,8 @@ export const recommendFood = (
     .sort((a, b) => b.score - a.score);
 
   const top = scoredFoods.slice(0, Math.min(5, scoredFoods.length));
-  const picked = pickWeighted(top);
+  const weightedPick = pickWeighted(top);
+  const picked = chooseMainRecommendation(weightedPick, scoredFoods, input, allMoods);
   const alternatives = scoredFoods.filter((item) => item.food.id !== picked.food.id).slice(0, 2);
 
   return {
