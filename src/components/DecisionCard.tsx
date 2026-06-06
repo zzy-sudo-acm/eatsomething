@@ -23,9 +23,9 @@ const confirmCopy: Record<VisibleFeedback, string[]> = {
 };
 
 const pickConfirm = [
-  '记上了——这顿归你了，系统就不打分了。',
-  '已归档为「吃过·没空打分」，回头再聊。',
-  '搞定，这顿算你亲自拍的板，吃得开心就行。',
+  '已归档为「吃过·未评分」——系统会记得你选了它，但不当成好评或差评。',
+  '记上了，这顿算「吃过·未评分」，不影响你的好评差评统计。',
+  '搞定，先归档为吃过；这次不打分，系统也不替你脑补。',
 ];
 
 const stabilityText = (stability: string) =>
@@ -145,10 +145,10 @@ export function DecisionCard({
         {!locked && (
           <button type="button" className="primary-button pick-button" onClick={onPick}>
             <Check size={19} />
-            就它了
+            就它了，不打分
           </button>
         )}
-        <div className="feedback-label">{locked ? '已记录' : '吃完了？顺便给它打个分（可选）：'}</div>
+        <div className="feedback-label">{locked ? '已记录' : '或者吃完顺便打个分（可选）：'}</div>
         <div className="feedback-row" aria-label="反馈">
           {feedbackOrder.map((feedback) => (
             <button

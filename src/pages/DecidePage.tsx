@@ -5,7 +5,7 @@ import { MoodSelector } from '../components/MoodSelector';
 import { distanceLabels, moodOptions, primaryMoodOptions, priceLabels, stripRelationshipMoods } from '../lib/options';
 import { makeId } from '../lib/storage';
 import { recommendFood } from '../lib/recommend';
-import { DecisionHistory, Distance, Feedback, FoodItem, PriceRange, Recommendation } from '../types';
+import { DecisionHistory, DecisionInput, Distance, Feedback, FoodItem, PriceRange, Recommendation } from '../types';
 
 interface DecidePageProps {
   foods: FoodItem[];
@@ -45,6 +45,7 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   const [distance, setDistance] = useState<Distance>('near');
   const [coupleMode, setCoupleMode] = useState(false);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
+  const [lastDecisionInput, setLastDecisionInput] = useState<DecisionInput | null>(null);
   const [submittedFeedback, setSubmittedFeedback] = useState<Feedback | undefined>();
   const [pickedNoRating, setPickedNoRating] = useState(false);
   const [isDeciding, setIsDeciding] = useState(false);
@@ -61,6 +62,18 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
     () => [...cleanSelectedMoods, ...(coupleMode ? cleanPartnerMoods : [])],
     [cleanPartnerMoods, cleanSelectedMoods, coupleMode]
   );
+
+  // The input that actually produced the recommendation currently on screen.
+  // History / feedback / skipped must use THIS, not the live controls the user
+  // may have changed after the recommendation was generated.
+  const activeInput: DecisionInput =
+    lastDecisionInput ?? {
+      selectedMoods: cleanSelectedMoods,
+      partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
+      budget,
+      distance,
+      coupleMode,
+    };
 
   useEffect(() => {
     if (recommendation && !isDeciding && decisionRef.current) {
@@ -84,23 +97,27 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
       id: makeId('history'),
       foodId: recommendation.food.id,
       foodName: recommendation.food.name,
-      selectedMoods: cleanSelectedMoods,
-      partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
-      budget,
-      distance,
+      selectedMoods: activeInput.selectedMoods,
+      partnerMoods: activeInput.partnerMoods,
+      budget: activeInput.budget,
+      distance: activeInput.distance,
       feedback: 'skipped',
       createdAt: Date.now(),
     };
   };
 
   const runRecommendation = (sourceHistory = history) => {
-    const next = recommendFood(foods, sourceHistory, {
+    const inputSnapshot: DecisionInput = {
       selectedMoods: cleanSelectedMoods,
       partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
       budget,
       distance,
       coupleMode,
-    });
+    };
+
+    setLastDecisionInput(inputSnapshot);
+
+    const next = recommendFood(foods, sourceHistory, inputSnapshot);
     setRecommendation(next);
     setSubmittedFeedback(undefined);
     setPickedNoRating(false);
@@ -132,10 +149,10 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
     id: makeId('history'),
     foodId: recommendation!.food.id,
     foodName: recommendation!.food.name,
-    selectedMoods: cleanSelectedMoods,
-    partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
-    budget,
-    distance,
+    selectedMoods: activeInput.selectedMoods,
+    partnerMoods: activeInput.partnerMoods,
+    budget: activeInput.budget,
+    distance: activeInput.distance,
     createdAt: Date.now(),
   });
 
