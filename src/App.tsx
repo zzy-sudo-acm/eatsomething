@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { BottomTabs } from './components/BottomTabs';
 import {
+  addHistory,
   loadDevMode,
   loadFoods,
   loadHistory,
   loadTheme,
+  normalizeFoods,
   saveDevMode,
   saveFoods,
   saveHistory,
@@ -42,8 +44,9 @@ export default function App() {
   };
 
   const updateFoods = (next: FoodItem[]) => {
-    setFoods(next);
-    saveFoods(next);
+    const normalized = normalizeFoods(next);
+    setFoods(normalized);
+    saveFoods(normalized);
   };
 
   const updateHistory = (next: DecisionHistory[]) => {
@@ -52,7 +55,7 @@ export default function App() {
   };
 
   const addHistoryEntry = (entry: DecisionHistory) => {
-    updateHistory([entry, ...history].slice(0, 100));
+    setHistory(addHistory(entry));
   };
 
   return (

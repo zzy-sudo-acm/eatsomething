@@ -1,8 +1,9 @@
 import { ChangeEvent, useMemo, useState } from 'react';
 import { ChevronDown, Copy, Download, Moon, RotateCcw, Trash2, Upload, Wrench } from 'lucide-react';
-import { resetFoods, ThemeMode } from '../lib/storage';
+import { normalizeFoodsForImport, resetFoods, ThemeMode } from '../lib/storage';
 import { DecisionHistory, FoodItem } from '../types';
 import { runRecommendationScenarios, type RecommendationScenarioReport } from '../lib/recommendationScenarios';
+import { APP_VERSION } from '../lib/version';
 
 interface SettingsPageProps {
   foods: FoodItem[];
@@ -13,18 +14,6 @@ interface SettingsPageProps {
   onSaveFoods: (foods: FoodItem[]) => void;
   onSaveHistory: (history: DecisionHistory[]) => void;
 }
-
-const isFoodArray = (value: unknown): value is FoodItem[] => {
-  if (!Array.isArray(value)) return false;
-  return value.every(
-    (item) =>
-      item &&
-      typeof item === 'object' &&
-      typeof (item as FoodItem).id === 'string' &&
-      typeof (item as FoodItem).name === 'string' &&
-      Array.isArray((item as FoodItem).tags)
-  );
-};
 
 export function SettingsPage({
   foods,
@@ -50,8 +39,15 @@ export function SettingsPage({
   };
 
   const copyJson = async () => {
-    await navigator.clipboard.writeText(exportJson);
-    notify('已复制菜品库 JSON。');
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard unavailable');
+      }
+      await navigator.clipboard.writeText(exportJson);
+      notify('已复制菜品库 JSON。');
+    } catch {
+      notify('复制失败，浏览器好像没把胃部档案交出来。', true);
+    }
   };
 
   const downloadJson = () => {
@@ -66,24 +62,33 @@ export function SettingsPage({
   };
 
   const importJson = () => {
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(importText);
-      if (!isFoodArray(parsed)) {
-        notify('导入失败：这份 JSON 不是菜品数组，检查一下格式。', true);
-        return;
-      }
-      onSaveFoods(parsed);
-      setImportText('');
-      notify(`导入成功，菜品库已更新为 ${parsed.length} 道。`);
+      parsed = JSON.parse(importText);
     } catch {
       notify('导入失败：JSON 解析不了，可能少了括号或多了逗号。', true);
+      return;
+    }
+
+    try {
+      const normalized = normalizeFoodsForImport(parsed);
+      onSaveFoods(normalized);
+      setImportText('');
+      notify(`导入成功，菜品库已更新为 ${normalized.length} 道。`);
+    } catch {
+      notify('导入失败：需要导入 MealMood 导出的菜品库 JSON。', true);
     }
   };
 
-  const handleImportFile = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    file.text().then((text) => setImportText(text));
+    try {
+      const text = await file.text();
+      setImportText(text);
+    } catch {
+      notify('读取文件失败，这份胃部档案可能打不开。', true);
+    }
   };
 
   const handleResetFoods = () => {
@@ -112,7 +117,7 @@ export function SettingsPage({
           <p className="eyebrow">设置</p>
           <h1>把后台收拾干净</h1>
         </div>
-        <span className="version-pill">v0.1.1</span>
+        <span className="version-pill">v{APP_VERSION}</span>
       </header>
 
       <section className="settings-section">
