@@ -33,7 +33,13 @@ export function HistoryList({ history }: HistoryListProps) {
             <span>{distanceLabels[item.distance]}</span>
             <span
               className={
-                item.feedback === 'worth' ? 'fb-worth' : item.feedback === 'regret' ? 'fb-regret' : undefined
+                item.feedback === 'worth'
+                  ? 'fb-worth'
+                  : item.feedback === 'regret'
+                    ? 'fb-regret'
+                    : item.feedback === 'skipped'
+                      ? 'fb-skipped'
+                      : undefined
               }
             >
               {item.feedback ? feedbackLabels[item.feedback] : '未反馈'}

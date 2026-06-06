@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { BadgeCheck, CircleDollarSign, MapPin, MessageCircle, ShieldAlert } from 'lucide-react';
 import { Feedback, Recommendation } from '../types';
 import { feedbackLabels, foodDistanceLabels, mealRoleLabels } from '../lib/options';
@@ -9,9 +9,11 @@ interface DecisionCardProps {
   onFeedback: (feedback: Feedback) => void;
 }
 
-const feedbackOrder: Feedback[] = ['worth', 'normal', 'regret'];
+type VisibleFeedback = Exclude<Feedback, 'skipped'>;
 
-const confirmCopy: Record<Feedback, string[]> = {
+const feedbackOrder: VisibleFeedback[] = ['worth', 'normal', 'regret'];
+
+const confirmCopy: Record<VisibleFeedback, string[]> = {
   worth: ['已归档，这顿正式进入你的胃部高光时刻。', '收到，系统记下了：这家可以再来。'],
   normal: ['已归档，本次决定正式进入胃部档案。', '记下了，不功不过，下次还能商量。'],
   regret: ['系统已记仇，下次会参考你这份胃部证词。', '已归档，下次它出现时系统会先犹豫一下。'],
@@ -23,9 +25,10 @@ const stabilityText = (stability: string) =>
 export function DecisionCard({ recommendation, submittedFeedback, onFeedback }: DecisionCardProps) {
   const { food, copy } = recommendation;
   const isCouple = copy.title.includes('你俩') || copy.punchline.includes('你俩');
+  const [showDebug, setShowDebug] = useState(false);
 
   const confirmLine = useMemo(() => {
-    if (!submittedFeedback) return '';
+    if (!submittedFeedback || submittedFeedback === 'skipped') return '';
     const lines = confirmCopy[submittedFeedback];
     return lines[Math.floor(Math.random() * lines.length)];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,6 +82,41 @@ export function DecisionCard({ recommendation, submittedFeedback, onFeedback }: 
       <div className="punchline">
         <MessageCircle size={17} />
         <span>{copy.punchline}</span>
+      </div>
+
+      <div className="recommend-debug">
+        <button
+          type="button"
+          className="debug-toggle"
+          aria-expanded={showDebug}
+          onClick={() => setShowDebug((value) => !value)}
+        >
+          {showDebug ? '收起推荐依据' : '展开推荐依据'}
+        </button>
+        {showDebug && (
+          <div className="debug-panel">
+            {recommendation.scoredFoods.slice(0, 8).map((item, index) => (
+              <div className="debug-item" key={item.food.id}>
+                <div className="debug-item__head">
+                  <b>
+                    {index + 1}. {item.food.name}
+                  </b>
+                  <span>{item.score} 分</span>
+                </div>
+                <div className="debug-meta">
+                  {mealRoleLabels[item.food.mealRole]} · 饱腹 {item.food.satiety}/5 · 约 {item.food.estimatedPrice} 元
+                </div>
+                <p>reasons: {item.reasons.length ? item.reasons.join('、') : '-'}</p>
+                <p>warnings: {item.warnings.length ? item.warnings.join('、') : '-'}</p>
+                <p>hardBlocked: {String(item.hardBlocked)}</p>
+                <p>
+                  hardBlockReasons:{' '}
+                  {item.hardBlockReasons.length ? item.hardBlockReasons.join('、') : '-'}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="feedback-block">

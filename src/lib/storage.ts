@@ -1,5 +1,6 @@
 import { defaultFoods } from '../data/defaultFoods';
 import { DecisionHistory, FoodItem, MealRole, Satiety } from '../types';
+import { inferPriceRangeFromEstimatedPrice } from './options';
 
 const FOOD_KEY = 'mealmood.foods.v01';
 const HISTORY_KEY = 'mealmood.history.v01';
@@ -66,6 +67,7 @@ export const normalizeFood = (food: FoodItem): FoodItem => {
 
   return {
     ...food,
+    priceRange: inferPriceRangeFromEstimatedPrice(estimatedPrice),
     estimatedPrice,
     satiety: isSatiety(draft.satiety) ? draft.satiety : inferSatiety(draft, mealRole),
     mealRole,

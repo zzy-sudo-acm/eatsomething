@@ -55,8 +55,24 @@ export function DecidePage({ foods, history, onAddHistory }: DecidePageProps) {
     setCoupleMode((prev) => !prev);
   };
 
-  const runRecommendation = () => {
-    const next = recommendFood(foods, history, {
+  const createSkipEntry = (): DecisionHistory | undefined => {
+    if (!recommendation || submittedFeedback) return undefined;
+
+    return {
+      id: makeId('history'),
+      foodId: recommendation.food.id,
+      foodName: recommendation.food.name,
+      selectedMoods: cleanSelectedMoods,
+      partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
+      budget,
+      distance,
+      feedback: 'skipped',
+      createdAt: Date.now(),
+    };
+  };
+
+  const runRecommendation = (sourceHistory = history) => {
+    const next = recommendFood(foods, sourceHistory, {
       selectedMoods: cleanSelectedMoods,
       partnerMoods: coupleMode ? cleanPartnerMoods : undefined,
       budget,
@@ -73,15 +89,19 @@ export function DecidePage({ foods, history, onAddHistory }: DecidePageProps) {
     if (!canDecide || isDeciding) return;
     window.clearTimeout(timerRef.current);
 
+    const skippedEntry = createSkipEntry();
+    const nextHistory = skippedEntry ? [skippedEntry, ...history].slice(0, 100) : history;
+    if (skippedEntry) onAddHistory(skippedEntry);
+
     if (prefersReducedMotion()) {
-      runRecommendation();
+      runRecommendation(nextHistory);
       return;
     }
 
     setLoadingLine(loadingLines[Math.floor(Math.random() * loadingLines.length)]);
     setIsDeciding(true);
     const delay = 400 + Math.floor(Math.random() * 400);
-    timerRef.current = window.setTimeout(runRecommendation, delay);
+    timerRef.current = window.setTimeout(() => runRecommendation(nextHistory), delay);
   };
 
   const handleFeedback = (feedback: Feedback) => {

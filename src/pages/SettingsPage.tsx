@@ -2,6 +2,7 @@ import { ChangeEvent, useMemo, useState } from 'react';
 import { ChevronDown, Copy, Download, Moon, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { resetFoods, ThemeMode } from '../lib/storage';
 import { DecisionHistory, FoodItem } from '../types';
+import { runRecommendationScenarios, type RecommendationScenarioReport } from '../lib/recommendationScenarios';
 
 interface SettingsPageProps {
   foods: FoodItem[];
@@ -28,6 +29,8 @@ export function SettingsPage({ foods, theme, onChangeTheme, onSaveFoods, onSaveH
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showRecommendationCheck, setShowRecommendationCheck] = useState(false);
+  const [scenarioReport, setScenarioReport] = useState<RecommendationScenarioReport | null>(null);
 
   const exportJson = useMemo(() => JSON.stringify(foods, null, 2), [foods]);
 
@@ -84,6 +87,12 @@ export function SettingsPage({ foods, theme, onChangeTheme, onSaveFoods, onSaveH
     if (!window.confirm('清空历史记录？你的胃部档案会被全部抹掉，且无法撤销。')) return;
     onSaveHistory([]);
     notify('历史记录已清空，胃部档案归零。');
+  };
+
+  const handleRunRecommendationCheck = () => {
+    const report = runRecommendationScenarios(foods);
+    setScenarioReport(report);
+    notify(`推荐自检完成：${report.passed}/${report.total} 通过。`, report.passed !== report.total);
   };
 
   return (
@@ -167,6 +176,43 @@ export function SettingsPage({ foods, theme, onChangeTheme, onSaveFoods, onSaveH
             <span className="switch-track" aria-hidden="true" />
           </button>
         </div>
+      </section>
+
+      <section className="settings-section">
+        <button
+          type="button"
+          className={`advanced-toggle ${showRecommendationCheck ? 'is-open' : ''}`}
+          aria-expanded={showRecommendationCheck}
+          onClick={() => setShowRecommendationCheck((value) => !value)}
+        >
+          推荐自检
+          <ChevronDown size={18} />
+        </button>
+        {showRecommendationCheck && (
+          <div className="scenario-check">
+            <button type="button" className="settings-button" onClick={handleRunRecommendationCheck}>
+              运行推荐自检
+            </button>
+            {scenarioReport && (
+              <div className="scenario-report">
+                <div className="scenario-summary">
+                  {scenarioReport.passed}/{scenarioReport.total} 通过
+                </div>
+                {scenarioReport.results.map((result) => (
+                  <div className="scenario-row" key={result.id}>
+                    <b className={result.passed ? 'scenario-pass' : 'scenario-fail'}>
+                      {result.passed ? '通过' : '失败'}
+                    </b>
+                    <div>
+                      <strong>{result.name}</strong>
+                      <p>{result.details}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="settings-section">

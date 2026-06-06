@@ -4,6 +4,7 @@ import { Distance, FoodItem, FoodType, MealRole, PriceRange, Satiety, Stability 
 import {
   displayMoodLabel,
   foodDistanceLabels,
+  inferPriceRangeFromEstimatedPrice,
   mealRoleLabels,
   moodOptions,
   priceLabels,
@@ -28,6 +29,15 @@ const stabilityOptions: Stability[] = ['high', 'medium', 'low'];
 const foodTagOptions = [...moodOptions, '适合两个人'];
 const normalizeTags = (values: string[]) => Array.from(new Set(values.map(displayMoodLabel)));
 
+const inferFoodDefaultsByType = (
+  type: FoodType
+): { estimatedPrice: number; satiety: Satiety; mealRole: MealRole } => {
+  if (type === 'drink') return { estimatedPrice: 15, satiety: 1, mealRole: 'drink' };
+  if (type === 'snack') return { estimatedPrice: 15, satiety: 2, mealRole: 'lightMeal' };
+  if (type === 'happy' || type === 'date') return { estimatedPrice: 30, satiety: 4, mealRole: 'main' };
+  return { estimatedPrice: 16, satiety: 4, mealRole: 'main' };
+};
+
 export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
   const [name, setName] = useState(initial?.name ?? '');
   const [priceRange, setPriceRange] = useState<PriceRange>(initial?.priceRange ?? 'under20');
@@ -39,6 +49,9 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
   const [tags, setTags] = useState<string[]>(() => normalizeTags(initial?.tags ?? []));
   const [spicy, setSpicy] = useState(initial?.spicy ?? false);
   const [stability, setStability] = useState<Stability>(initial?.stability ?? 'medium');
+  const [priceTouched, setPriceTouched] = useState(false);
+  const [satietyTouched, setSatietyTouched] = useState(false);
+  const [mealRoleTouched, setMealRoleTouched] = useState(false);
 
   const title = useMemo(() => (initial ? '编辑菜品' : '新增菜品'), [initial]);
 
@@ -50,19 +63,44 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
     setTags([...tags, tag]);
   };
 
+  const handleTypeChange = (nextType: FoodType) => {
+    setType(nextType);
+    const defaults = inferFoodDefaultsByType(nextType);
+
+    if (!priceTouched) {
+      setEstimatedPrice(defaults.estimatedPrice);
+      setPriceRange(inferPriceRangeFromEstimatedPrice(defaults.estimatedPrice));
+    }
+
+    if (!satietyTouched) {
+      setSatiety(defaults.satiety);
+    }
+
+    if (!mealRoleTouched) {
+      setMealRole(defaults.mealRole);
+    }
+  };
+
+  const handleEstimatedPriceChange = (value: number) => {
+    setPriceTouched(true);
+    setEstimatedPrice(value);
+    setPriceRange(inferPriceRangeFromEstimatedPrice(Math.max(1, Math.round(value || 1))));
+  };
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
 
     const time = Date.now();
+    const normalizedPrice = Math.max(1, Math.round(estimatedPrice || 1));
     onSave({
       id: initial?.id ?? makeId('food'),
       name: trimmed,
-      priceRange,
+      priceRange: inferPriceRangeFromEstimatedPrice(normalizedPrice),
       distance,
       type,
-      estimatedPrice: Math.max(1, Math.round(estimatedPrice || 1)),
+      estimatedPrice: normalizedPrice,
       satiety,
       mealRole,
       tags,
@@ -89,13 +127,14 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
 
       <label className="field">
         <span>价格区间</span>
-        <select value={priceRange} onChange={(event) => setPriceRange(event.target.value as PriceRange)}>
+        <select value={priceRange} onChange={(event) => setPriceRange(event.target.value as PriceRange)} disabled>
           {priceOptions.map((item) => (
             <option key={item} value={item}>
               {priceLabels[item]}
             </option>
           ))}
         </select>
+        <small className="field-hint">价格档位会根据预估价格自动归类。</small>
       </label>
 
       <label className="field">
@@ -111,7 +150,7 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
 
       <label className="field">
         <span>类型</span>
-        <select value={type} onChange={(event) => setType(event.target.value as FoodType)}>
+        <select value={type} onChange={(event) => handleTypeChange(event.target.value as FoodType)}>
           {typeOptions.map((item) => (
             <option key={item} value={item}>
               {typeLabels[item]}
@@ -127,14 +166,20 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
           min="1"
           step="1"
           value={estimatedPrice}
-          onChange={(event) => setEstimatedPrice(Number(event.target.value))}
+          onChange={(event) => handleEstimatedPriceChange(Number(event.target.value))}
           placeholder="例如：18"
         />
       </label>
 
       <label className="field">
         <span>饱腹度</span>
-        <select value={satiety} onChange={(event) => setSatiety(Number(event.target.value) as Satiety)}>
+        <select
+          value={satiety}
+          onChange={(event) => {
+            setSatietyTouched(true);
+            setSatiety(Number(event.target.value) as Satiety);
+          }}
+        >
           {satietyOptions.map((item) => (
             <option key={item} value={item}>
               {satietyLabels[item]}
@@ -145,7 +190,13 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
 
       <label className="field">
         <span>定位</span>
-        <select value={mealRole} onChange={(event) => setMealRole(event.target.value as MealRole)}>
+        <select
+          value={mealRole}
+          onChange={(event) => {
+            setMealRoleTouched(true);
+            setMealRole(event.target.value as MealRole);
+          }}
+        >
           {mealRoleOptions.map((item) => (
             <option key={item} value={item}>
               {mealRoleLabels[item]}

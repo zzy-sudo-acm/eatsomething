@@ -43,6 +43,13 @@ export const priceLabels: Record<PriceRange, string> = {
   any: '无所谓',
 };
 
+export const inferPriceRangeFromEstimatedPrice = (price: number): PriceRange => {
+  if (price <= 10) return 'under10';
+  if (price <= 20) return 'under20';
+  if (price <= 50) return 'under50';
+  return 'any';
+};
+
 export const distanceLabels: Record<Distance, string> = {
   near: '宿舍楼下',
   medium: '校门口',
@@ -90,6 +97,7 @@ export const feedbackLabels: Record<Feedback, string> = {
   worth: '值',
   normal: '一般',
   regret: '后悔',
+  skipped: '已跳过',
 };
 
 export const tabLabels: Record<TabKey, string> = {

@@ -270,7 +270,7 @@ const stabilityScore = (food: FoodItem) => {
 
 const getLatestFoodTime = (history: DecisionHistory[], foodId: string) =>
   history
-    .filter((item) => item.foodId === foodId)
+    .filter((item) => item.foodId === foodId && item.feedback !== 'skipped')
     .map((item) => item.createdAt)
     .sort((a, b) => b - a)[0];
 
@@ -290,6 +290,22 @@ const feedbackScore = (history: DecisionHistory[], foodId: string) => {
   const normal = foodHistory.filter((item) => item.feedback === 'normal').length;
   const regret = foodHistory.filter((item) => item.feedback === 'regret').length;
   return Math.min(worth * 4 + normal * 1, 18) - Math.min(regret * 9, 36);
+};
+
+const skipPenalty = (history: DecisionHistory[], foodId: string, now: number) => {
+  const latest = history
+    .filter((item) => item.foodId === foodId && item.feedback === 'skipped')
+    .map((item) => item.createdAt)
+    .sort((a, b) => b - a)[0];
+
+  if (!latest) return 0;
+
+  const minutes = (now - latest) / (60 * 1000);
+  const days = (now - latest) / dayMs;
+
+  if (minutes <= 10) return -30;
+  if (days <= 1) return -10;
+  return 0;
 };
 
 const pickWeighted = (items: ScoredFood[]) => {
@@ -342,6 +358,32 @@ const chooseMainRecommendation = (scoredFoods: ScoredFood[], input: DecisionInpu
   );
 };
 
+const pickAlternatives = (picked: ScoredFood, scoredFoods: ScoredFood[], input: DecisionInput, moods: string[]) => {
+  const drinkNeed = hasDrinkNeed(moods);
+  const avoidSpicy = moods.includes('不想吃辣');
+  const isSameFood = (item: ScoredFood) => item.food.id === picked.food.id;
+  const safeAlternatives = scoredFoods
+    .filter((item) => !isSameFood(item))
+    .filter((item) => !item.hardBlocked)
+    .filter((item) => canBeMainRecommendation(item.food, input, moods))
+    .slice(0, 2);
+
+  if (safeAlternatives.length >= 2) return safeAlternatives;
+
+  const looseAlternatives = scoredFoods
+    .filter((item) => !isSameFood(item))
+    .filter((item) => !safeAlternatives.some((safe) => safe.food.id === item.food.id))
+    .filter((item) => !item.hardBlocked)
+    .filter((item) => !(avoidSpicy && item.food.spicy))
+    .filter((item) => drinkNeed || item.food.mealRole !== 'drink')
+    .slice(0, 2 - safeAlternatives.length);
+
+  const alternatives = [...safeAlternatives, ...looseAlternatives];
+  if (alternatives.length) return alternatives;
+
+  return scoredFoods.filter((item) => !isSameFood(item)).slice(0, 2);
+};
+
 const formatList = (values: string[], fallback: string) => {
   if (!values.length) return fallback;
   if (values.length <= 3) return values.join('、');
@@ -353,9 +395,9 @@ const pick = <T>(values: T[]): T => values[Math.floor(Math.random() * values.len
 const getVerdict = (
   score: number,
   food: FoodItem,
-  input: DecisionInput
+  allMoods: string[]
 ): { verdict: string; verdictTone: DecisionCopy['verdictTone'] } => {
-  const conflict = (input.selectedMoods.includes('不想吃辣') && food.spicy) || food.stability === 'low';
+  const conflict = (allMoods.includes('不想吃辣') && food.spicy) || food.stability === 'low';
   if (score >= 40 && !conflict) return { verdict: '胃部通过率 高', verdictTone: 'good' };
   if (score >= 24 && !conflict) return { verdict: '匹配度 稳妥', verdictTone: 'good' };
   if (conflict) return { verdict: '今日风险 略高', verdictTone: 'risky' };
@@ -440,7 +482,7 @@ const buildCopy = (
     `你不是非要吃${food.name}，你只是想让生活少出一道选择题。`,
   ];
 
-  const { verdict, verdictTone } = getVerdict(picked.score, food, input);
+  const { verdict, verdictTone } = getVerdict(picked.score, food, allMoods);
   const punchline = shouldTreatDrinkAsAddOn
     ? pick([
         `${drinkAlternative.name}可以喝，但它不能假装自己是一顿饭。`,
@@ -522,6 +564,10 @@ export const recommendFood = (
       if (feedback > 0) reasons.push('历史反馈不错');
       if (feedback < 0) warnings.push('历史后悔偏多');
 
+      const skipped = skipPenalty(history, food.id, now);
+      score += skipped;
+      if (skipped < 0) warnings.push('刚刚跳过');
+
       if (input.coupleMode && matchedMoods.length >= 2) {
         score += 4;
         reasons.push('适合折中');
@@ -535,7 +581,7 @@ export const recommendFood = (
     .sort((a, b) => b.score - a.score);
 
   const picked = chooseMainRecommendation(scoredFoods, input, allMoods);
-  const alternatives = scoredFoods.filter((item) => item.food.id !== picked.food.id).slice(0, 2);
+  const alternatives = pickAlternatives(picked, scoredFoods, input, allMoods);
 
   return {
     food: picked.food,

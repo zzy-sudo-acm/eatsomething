@@ -4,7 +4,7 @@ export type FoodType = 'meal' | 'snack' | 'drink' | 'happy' | 'date';
 export type Stability = 'high' | 'medium' | 'low';
 export type Satiety = 1 | 2 | 3 | 4 | 5;
 export type MealRole = 'main' | 'lightMeal' | 'addon' | 'drink';
-export type Feedback = 'worth' | 'normal' | 'regret';
+export type Feedback = 'worth' | 'normal' | 'regret' | 'skipped';
 export type TabKey = 'decide' | 'library' | 'history' | 'settings';
 
 export interface FoodItem {

@@ -7,7 +7,7 @@ interface HistoryPageProps {
 }
 
 const topRepeated = (history: DecisionHistory[]) => {
-  const recent = history.slice(0, 20);
+  const recent = history.filter((item) => item.feedback !== 'skipped').slice(0, 20);
   const count = new Map<string, number>();
   recent.forEach((item) => count.set(item.foodName, (count.get(item.foodName) ?? 0) + 1));
   return [...count.entries()]
@@ -44,7 +44,8 @@ export function HistoryPage({ history }: HistoryPageProps) {
     );
   }
 
-  const recentNames = history.slice(0, 4).map((item) => item.foodName);
+  const eatenHistory = history.filter((item) => item.feedback !== 'skipped');
+  const recentNames = eatenHistory.slice(0, 4).map((item) => item.foodName);
   const worth = history.find((item) => item.feedback === 'worth');
   const regret = history.find((item) => item.feedback === 'regret');
 
