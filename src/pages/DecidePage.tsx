@@ -4,6 +4,7 @@ import { DecisionCard } from '../components/DecisionCard';
 import { MoodSelector } from '../components/MoodSelector';
 import { distanceLabels, moodOptions, primaryMoodOptions, priceLabels, stripRelationshipMoods } from '../lib/options';
 import { makeId } from '../lib/storage';
+import { moodLabel } from '../lib/moods';
 import { recommendFood } from '../lib/recommend';
 import { DecisionHistory, DecisionInput, Distance, Feedback, FoodItem, PriceRange, Recommendation } from '../types';
 
@@ -24,6 +25,10 @@ const loadingLines = [
   '胃部意见合并中…',
   '正在排除你绝对不会吃的…',
   '正在和你的钱包谈判…',
+  '系统扫描胃部状态中…',
+  '正在传唤候选菜品到庭…',
+  '正在核对你的踩雷前科…',
+  '证据不足的菜已当庭释放…',
 ];
 
 const rejudgeLines = ['换一个', '不服，再判一次', '再给我一个答案', '这个不行，下一位', '再抽一次'];
@@ -39,7 +44,7 @@ const buzz = (ms: number) => {
 };
 
 export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePageProps) {
-  const [selectedMoods, setSelectedMoods] = useState<string[]>(['不知道想吃啥']);
+  const [selectedMoods, setSelectedMoods] = useState<string[]>(['noIdea']);
   const [partnerMoods, setPartnerMoods] = useState<string[]>([]);
   const [budget, setBudget] = useState<PriceRange>('under20');
   const [distance, setDistance] = useState<Distance>('near');
@@ -51,12 +56,15 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   const [isDeciding, setIsDeciding] = useState(false);
   const [loadingLine, setLoadingLine] = useState(loadingLines[0]);
   const [rejudgeLabel, setRejudgeLabel] = useState(rejudgeLines[0]);
+  const [flashName, setFlashName] = useState<string | null>(null);
   const timerRef = useRef<number | undefined>(undefined);
+  const flashRef = useRef<number | undefined>(undefined);
   const decisionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     return () => {
       window.clearTimeout(timerRef.current);
+      window.clearInterval(flashRef.current);
     };
   }, []);
 
@@ -123,6 +131,8 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
 
     setLastDecisionInput(inputSnapshot);
 
+    window.clearInterval(flashRef.current);
+    setFlashName(null);
     const next = recommendFood(foods, sourceHistory, inputSnapshot);
     setRecommendation(next);
     setSubmittedFeedback(undefined);
@@ -147,7 +157,17 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
 
     setLoadingLine(loadingLines[Math.floor(Math.random() * loadingLines.length)]);
     setIsDeciding(true);
-    const delay = 400 + Math.floor(Math.random() * 400);
+
+    // 候选菜名快速闪动:老虎机式过堂。
+    window.clearInterval(flashRef.current);
+    if (foods.length > 1) {
+      setFlashName(foods[Math.floor(Math.random() * foods.length)].name);
+      flashRef.current = window.setInterval(() => {
+        setFlashName(foods[Math.floor(Math.random() * foods.length)].name);
+      }, 90);
+    }
+
+    const delay = 700 + Math.floor(Math.random() * 500);
     timerRef.current = window.setTimeout(() => runRecommendation(nextHistory), delay);
   };
 
@@ -265,6 +285,7 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
               <RefreshCw size={18} className="spin" />
               <span>{loadingLine}</span>
             </div>
+            {flashName && <div className="loading-flash-name">{flashName}</div>}
             <div className="decision-loading-card__lines" aria-hidden="true">
               <span className="loading-line loading-line--wide" />
               <span className="loading-line loading-line--mid" />
@@ -295,7 +316,9 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
       )}
 
       <div className="sticky-action">
-        <div className="decision-context">{selectedSummary.slice(0, 3).join(' · ') || '随缘局，全凭手感'}</div>
+        <div className="decision-context">
+          {selectedSummary.slice(0, 3).map(moodLabel).join(' · ') || '随缘局，全凭手感'}
+        </div>
         {recommendation ? (
           <button
             className={`primary-button primary-button--large primary-button--rejudge ${isDeciding ? 'is-busy' : ''}`}

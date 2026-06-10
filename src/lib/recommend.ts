@@ -15,35 +15,36 @@ import {
   priceLabels,
   stabilityLabels,
 } from './options';
+import { moodLabel, toMoodIds } from './moods';
 
 const dayMs = 24 * 60 * 60 * 1000;
-const drinkPrimaryMoods = ['想喝点东西', '想喝奶茶'];
-const lightMealMoods = ['不想吃太饱', '想省钱', '不想排队'];
+const drinkPrimaryMoods = ['wantDrink', 'milkTea'];
+const lightMealMoods = ['eatLight', 'saveMoney', 'noQueue'];
 
-const unique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
+const unique = (values: string[]) => toMoodIds(values);
 
 const hasDrinkNeed = (moods: string[]) => drinkPrimaryMoods.some((mood) => moods.includes(mood));
 
 const hasLightMealReason = (input: DecisionInput, moods: string[], food: FoodItem) => {
-  if (moods.includes('不想吃太饱') && food.tags.includes('不想吃太饱')) return true;
-  if (input.budget === 'under10' && moods.includes('想省钱')) return true;
-  return moods.includes('不想排队') && food.tags.includes('不想排队');
+  if (moods.includes('eatLight') && food.tags.includes('eatLight')) return true;
+  if (input.budget === 'under10' && moods.includes('saveMoney')) return true;
+  return moods.includes('noQueue') && food.tags.includes('noQueue');
 };
 
 const isCoupleFriendlyFood = (food: FoodItem) => food.tags.some((tag) => coupleFriendlyTags.includes(tag));
 
 const canBeMainRecommendation = (food: FoodItem, input: DecisionInput, moods: string[]) => {
   if (food.mealRole === 'main') return true;
-  if (food.mealRole === 'lightMeal') return !moods.includes('饿疯了') || food.satiety >= 3;
+  if (food.mealRole === 'lightMeal') return !moods.includes('starving') || food.satiety >= 3;
   if (food.mealRole === 'drink') return hasDrinkNeed(moods);
-  if (food.mealRole === 'addon') return hasLightMealReason(input, moods, food) && !moods.includes('饿疯了');
+  if (food.mealRole === 'addon') return hasLightMealReason(input, moods, food) && !moods.includes('starving');
   return false;
 };
 
 const budgetScore = (selected: PriceRange, food: FoodItem, moods: string[]): number => {
   if (selected === 'any') return 0;
 
-  const saving = moods.includes('想省钱');
+  const saving = moods.includes('saveMoney');
   const price = food.estimatedPrice;
 
   if (selected === 'under10') {
@@ -78,7 +79,7 @@ const typeMoodScore = (
   const warnings: string[] = [];
   const drinkNeed = hasDrinkNeed(moods);
   const lightMealNeed = hasLightMealReason(input, moods, food);
-  const wantsLightMeal = moods.includes('不想吃太饱');
+  const wantsLightMeal = moods.includes('eatLight');
   const isFillingMain = food.mealRole === 'main' && food.satiety >= 4;
 
   if (input.budget === 'under50') {
@@ -90,7 +91,7 @@ const typeMoodScore = (
       reasons.push('预算松一点，正餐优先');
     }
 
-    if (food.estimatedPrice < 15 && !moods.includes('想省钱')) {
+    if (food.estimatedPrice < 15 && !moods.includes('saveMoney')) {
       score -= 8;
       warnings.push('今天不是最低价优先');
     }
@@ -133,7 +134,7 @@ const typeMoodScore = (
     }
   }
 
-  if (moods.includes('饿疯了')) {
+  if (moods.includes('starving')) {
     if (isFillingMain) {
       score += 30;
       reasons.push('顶饱正餐');
@@ -164,7 +165,7 @@ const typeMoodScore = (
     reasons.push('明确想喝');
   }
 
-  if (moods.includes('想奖励自己')) {
+  if (moods.includes('reward')) {
     if (food.type === 'happy' || food.type === 'date') {
       score += 16;
       reasons.push('奖励感更足');
@@ -198,7 +199,7 @@ const typeMoodScore = (
     }
   }
 
-  if (moods.includes('不知道想吃啥')) {
+  if (moods.includes('noIdea')) {
     if (food.mealRole === 'main' && food.stability === 'high') {
       score += 10;
       reasons.push('不知道时选高稳定正餐');
@@ -232,15 +233,15 @@ const getHardBlockReasons = (food: FoodItem, input: DecisionInput, moods: string
     reasons.push('饮料不能假装正餐');
   }
 
-  if (moods.includes('饿疯了') && food.satiety <= 1) {
+  if (moods.includes('starving') && food.satiety <= 1) {
     reasons.push('饿疯了需要顶饱');
   }
 
-  if (moods.includes('饿疯了') && food.mealRole === 'addon') {
+  if (moods.includes('starving') && food.mealRole === 'addon') {
     reasons.push('加餐不够当饭');
   }
 
-  if (moods.includes('不想吃辣') && food.spicy) {
+  if (moods.includes('noSpicy') && food.spicy) {
     reasons.push('明确不想吃辣');
   }
 
@@ -284,12 +285,33 @@ const recentPenalty = (history: DecisionHistory[], foodId: string, now: number):
   return 0;
 };
 
-const feedbackScore = (history: DecisionHistory[], foodId: string) => {
-  const foodHistory = history.filter((item) => item.foodId === foodId);
-  const worth = foodHistory.filter((item) => item.feedback === 'worth').length;
-  const normal = foodHistory.filter((item) => item.feedback === 'normal').length;
-  const regret = foodHistory.filter((item) => item.feedback === 'regret').length;
-  return Math.min(worth * 4 + normal * 1, 18) - Math.min(regret * 9, 36);
+// 反馈分:好评/后悔随时间衰减,最近的态度比一个月前的更算数。
+const ratedHistory = (history: DecisionHistory[], foodId: string) =>
+  history
+    .filter((item) => item.foodId === foodId && item.feedback && item.feedback !== 'skipped')
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+const feedbackScore = (history: DecisionHistory[], foodId: string, now: number) => {
+  let positive = 0;
+  let negative = 0;
+  for (const item of ratedHistory(history, foodId)) {
+    const days = (now - item.createdAt) / dayMs;
+    const decay = days <= 7 ? 1 : days <= 30 ? 0.7 : 0.4;
+    if (item.feedback === 'worth') positive += 5 * decay;
+    if (item.feedback === 'normal') positive += 1 * decay;
+    if (item.feedback === 'regret') negative += 10 * decay;
+  }
+  return Math.round(Math.min(positive, 20) - Math.min(negative, 40));
+};
+
+// 连续后悔次数(从最近一次往前数)。
+const regretStreak = (history: DecisionHistory[], foodId: string) => {
+  let streak = 0;
+  for (const item of ratedHistory(history, foodId)) {
+    if (item.feedback === 'regret') streak += 1;
+    else break;
+  }
+  return streak;
 };
 
 const skipPenalty = (history: DecisionHistory[], foodId: string, now: number) => {
@@ -325,7 +347,7 @@ const pickWeighted = (items: ScoredFood[]) => {
 
 const chooseMainRecommendation = (scoredFoods: ScoredFood[], input: DecisionInput, moods: string[]) => {
   const bestScore = scoredFoods[0]?.score ?? 0;
-  const isHungry = moods.includes('饿疯了');
+  const isHungry = moods.includes('starving');
   const eligibleFoods = scoredFoods.filter(
     (item) => !item.hardBlocked && canBeMainRecommendation(item.food, input, moods)
   );
@@ -360,7 +382,7 @@ const chooseMainRecommendation = (scoredFoods: ScoredFood[], input: DecisionInpu
 
 const pickAlternatives = (picked: ScoredFood, scoredFoods: ScoredFood[], input: DecisionInput, moods: string[]) => {
   const drinkNeed = hasDrinkNeed(moods);
-  const avoidSpicy = moods.includes('不想吃辣');
+  const avoidSpicy = moods.includes('noSpicy');
   const isSameFood = (item: ScoredFood) => item.food.id === picked.food.id;
   const safeAlternatives = scoredFoods
     .filter((item) => !isSameFood(item))
@@ -397,7 +419,7 @@ const getVerdict = (
   food: FoodItem,
   allMoods: string[]
 ): { verdict: string; verdictTone: DecisionCopy['verdictTone'] } => {
-  const conflict = (allMoods.includes('不想吃辣') && food.spicy) || food.stability === 'low';
+  const conflict = (allMoods.includes('noSpicy') && food.spicy) || food.stability === 'low';
   if (score >= 40 && !conflict)
     return { verdict: pick(['胃部通过率 高', '匹配度 很稳', '本轮稳了']), verdictTone: 'good' };
   if (score >= 24 && !conflict)
@@ -417,6 +439,9 @@ const buildCopy = (
   const allMoods = unique([...moods, ...partnerMoods]);
   const food = picked.food;
   const matched = allMoods.filter((mood) => food.tags.includes(mood));
+  const matchedLabels = matched.map(moodLabel);
+  const moodLabelsList = moods.map(moodLabel);
+  const partnerMoodLabels = partnerMoods.map(moodLabel);
   const recentTime = getLatestFoodTime(history, food.id);
   const ateRecently = recentTime && Date.now() - recentTime < 7 * dayMs;
   const drinkAlternative = alternatives.find((item) => item.mealRole === 'drink');
@@ -424,25 +449,25 @@ const buildCopy = (
 
   let title = '别折腾，今天吃稳的';
   if (input.coupleMode) title = '给你俩选了个不容易吵架的';
-  else if (moods.includes('想省钱')) title = '钱包说了算，这个不亏';
-  else if (moods.includes('想奖励自己') || moods.includes('刚考完')) title = '今天可以对自己好一点';
-  else if (moods.includes('饿疯了')) title = '先把血条回满再说';
-  else if (moods.includes('不知道想吃啥')) title = '别问脑子了，问你的胃';
+  else if (moods.includes('saveMoney')) title = '钱包说了算，这个不亏';
+  else if (moods.includes('reward') || moods.includes('afterExam')) title = '今天可以对自己好一点';
+  else if (moods.includes('starving')) title = '先把血条回满再说';
+  else if (moods.includes('noIdea')) title = '别问脑子了，问你的胃';
 
   // Reason: written like a friend talking, not a rule dump.
   let reason: string;
   if (input.coupleMode) {
-    const selfPart = formatList(moods, '没什么特别要求');
-    const partnerPart = partnerMoods.length ? formatList(partnerMoods, '随缘') : '随缘';
+    const selfPart = formatList(moodLabelsList, '没什么特别要求');
+    const partnerPart = partnerMoodLabels.length ? formatList(partnerMoodLabels, '随缘') : '随缘';
     reason =
       `你这边${selfPart}，对方那边${partnerPart}，两边胃口合并之后，${food.name}是那个谁都不太会翻脸的答案。` +
       `大概${food.estimatedPrice}元，${foodDistanceLabels[food.distance]}就能解决，不用为了一顿饭走太远。`;
   } else {
     const opener = matched.length
       ? pick([
-          `你说${formatList(matched, '现在这状态')}，那${food.name}基本就是为这个量身定的。`,
-          `就你这「${formatList(matched, '现在这状态')}」的状态，闭眼选都该是${food.name}。`,
-          `行吧，${formatList(matched, '现在这状态')}——${food.name}举手了，说这活它最熟。`,
+          `你说${formatList(matchedLabels, '现在这状态')}，那${food.name}基本就是为这个量身定的。`,
+          `就你这「${formatList(matchedLabels, '现在这状态')}」的状态，闭眼选都该是${food.name}。`,
+          `行吧，${formatList(matchedLabels, '现在这状态')}——${food.name}举手了，说这活它最熟。`,
         ])
       : pick([
           `你也没太想好吃啥，那就别难为自己——${food.name}不花哨，但今天胜在不用纠结。`,
@@ -467,13 +492,13 @@ const buildCopy = (
     reason += '今天预算给得比较松，系统还是先按能好好吃饭来选，没有让饮料抢主菜位置。';
   }
 
-  if (allMoods.includes('不想吃太饱') && food.mealRole === 'lightMeal') {
+  if (allMoods.includes('eatLight') && food.mealRole === 'lightMeal') {
     reason += '这不是不吃饭，是吃轻一点，给胃留点余地。';
   }
 
   // Risk: human, not a clause list.
   let risk: string;
-  if (food.spicy && allMoods.includes('不想吃辣')) {
+  if (food.spicy && allMoods.includes('noSpicy')) {
     risk = '它其实带点辣，你刚说不想吃辣——嘴硬可以，胃不一定买账。';
   } else if (food.spicy) {
     risk = pick(['微辣预警，怕辣的话嘴下留情，别逞强。', '它带点辣，嘴硬可以，明天的你不一定原谅今天的你。']);
@@ -541,7 +566,7 @@ export const recommendFood = (
       const matchedMoods = allMoods.filter((mood) => food.tags.includes(mood));
       if (matchedMoods.length) {
         score += matchedMoods.length * 8;
-        reasons.push(`匹配 ${matchedMoods.join('、')}`);
+        reasons.push(`匹配 ${matchedMoods.map(moodLabel).join('、')}`);
       }
 
       const budget = budgetScore(input.budget, food, allMoods);
@@ -565,12 +590,12 @@ export const recommendFood = (
       score += stable;
       if (food.stability === 'high') reasons.push('稳定性高');
 
-      if (allMoods.includes('不想吃辣') && food.spicy) {
+      if (allMoods.includes('noSpicy') && food.spicy) {
         score -= 20;
         warnings.push('你说不想吃辣');
       }
 
-      if (allMoods.includes('不想踩雷') && food.stability === 'low') {
+      if (allMoods.includes('noRisk') && food.stability === 'low') {
         score -= 15;
         warnings.push('稳定性低');
       }
@@ -579,10 +604,23 @@ export const recommendFood = (
       score += recent;
       if (recent < 0) warnings.push('最近吃过');
 
-      const feedback = feedbackScore(history, food.id);
+      const feedback = feedbackScore(history, food.id, now);
       score += feedback;
-      if (feedback > 0) reasons.push('历史反馈不错');
+      if (feedback >= 8) reasons.push('历史口碑很稳');
+      else if (feedback > 0) reasons.push('历史反馈不错');
       if (feedback < 0) warnings.push('历史后悔偏多');
+
+      // 拿不准 / 不想踩雷的时候,口碑好的菜再加一点底气。
+      if (feedback >= 8 && (allMoods.includes('noRisk') || allMoods.includes('noIdea'))) {
+        score += 6;
+        reasons.push('拿不准时先吃口碑');
+      }
+
+      const streak = regretStreak(history, food.id);
+      if (streak >= 2) {
+        score -= 15;
+        warnings.push('连着后悔两次，先让它冷静一下');
+      }
 
       const skipped = skipPenalty(history, food.id, now);
       score += skipped;

@@ -4,3 +4,7 @@ dist
 .DS_Store
 *.log
 vite.config.ts.timestamp-*.mjs
+.playwright-mcp/
+*.png
+!public/**/*.png
+coverage

@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Trophy, RotateCcw, Siren, Utensils } from 'lucide-react';
 import { HistoryList } from '../components/HistoryList';
-import { DecisionHistory } from '../types';
+import { ReportCard } from '../components/ReportCard';
+import { DecisionHistory, FoodItem } from '../types';
 
 interface HistoryPageProps {
   history: DecisionHistory[];
+  foods: FoodItem[];
 }
+
+type HistoryView = 'records' | 'report';
 
 type HistoryFilter = 'eaten' | 'skipped' | 'all';
 
@@ -39,8 +43,9 @@ const repeatWarning = (history: DecisionHistory[]) => {
   return `${topName} 最近出现了 ${topCount} 次`;
 };
 
-export function HistoryPage({ history }: HistoryPageProps) {
+export function HistoryPage({ history, foods }: HistoryPageProps) {
   const [filter, setFilter] = useState<HistoryFilter>('eaten');
+  const [view, setView] = useState<HistoryView>('records');
 
   if (!history.length) {
     return (
@@ -79,10 +84,32 @@ export function HistoryPage({ history }: HistoryPageProps) {
       <header className="page-header">
         <div>
           <p className="eyebrow">历史</p>
-          <h1>你的胃部档案</h1>
+          <h1>{view === 'report' ? '胃部判决报告' : '你的胃部档案'}</h1>
+        </div>
+        <div className="view-switch" role="group" aria-label="视图切换">
+          <button
+            type="button"
+            className={`chip chip--small ${view === 'records' ? 'is-selected' : ''}`}
+            aria-pressed={view === 'records'}
+            onClick={() => setView('records')}
+          >
+            档案
+          </button>
+          <button
+            type="button"
+            className={`chip chip--small ${view === 'report' ? 'is-selected' : ''}`}
+            aria-pressed={view === 'report'}
+            onClick={() => setView('report')}
+          >
+            报告
+          </button>
         </div>
       </header>
 
+      {view === 'report' && <ReportCard history={history} foods={foods} />}
+
+      {view === 'records' && (
+      <>
       <section className="stats-grid">
         <div className="stat-card">
           <Utensils size={18} />
@@ -128,6 +155,8 @@ export function HistoryPage({ history }: HistoryPageProps) {
           <span className="empty-emoji">🍽️</span>
           {emptyCopy[filter]}
         </div>
+      )}
+      </>
       )}
     </div>
   );

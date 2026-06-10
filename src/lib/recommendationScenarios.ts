@@ -52,7 +52,7 @@ const hasSpicy = (foods: FoodItem[]) => foods.some((food) => food.spicy);
 const hasLightMeal = (foods: FoodItem[]) => foods.some((food) => food.mealRole === 'lightMeal');
 
 const isMilkTeaCandidate = (food: FoodItem) =>
-  food.name.includes('奶茶') || (food.mealRole === 'drink' && food.tags.includes('想喝奶茶'));
+  food.name.includes('奶茶') || (food.mealRole === 'drink' && food.tags.includes('milkTea'));
 
 const hasMilkTea = (foods: FoodItem[]) => foods.some(isMilkTeaCandidate);
 
@@ -64,7 +64,7 @@ const summarizeRecommendations = (recommendations: Recommendation[]) =>
 
 const findMilkTea = (recommendation: Recommendation) =>
   recommendation.scoredFoods.find(
-    (item) => item.food.name.includes('奶茶') || item.food.tags.includes('想喝奶茶')
+    (item) => item.food.name.includes('奶茶') || item.food.tags.includes('milkTea')
   );
 
 const buildResult = (
@@ -91,7 +91,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
   {
     const recommendations = runSamples(foods, {
       ...baseInput,
-      selectedMoods: ['不知道想吃啥'],
+      selectedMoods: ['noIdea'],
       budget: 'under50',
     });
     const bad = recommendations.filter((item) => hasDrink(getVisibleFoods(item)));
@@ -110,7 +110,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
   {
     const recommendations = runSamples(foods, {
       ...baseInput,
-      selectedMoods: ['饿疯了'],
+      selectedMoods: ['starving'],
       budget: 'under20',
     });
     const badRole = recommendations.filter((item) => hasDrink(getVisibleFoods(item)) || hasAddon(getVisibleFoods(item)));
@@ -130,7 +130,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
   {
     const recommendations = runSamples(foods, {
       ...baseInput,
-      selectedMoods: ['想喝奶茶'],
+      selectedMoods: ['milkTea'],
       budget: 'under20',
     });
     const first = recommendations[0];
@@ -163,7 +163,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
   {
     const recommendations = runSamples(foods, {
       ...baseInput,
-      selectedMoods: ['不想吃辣'],
+      selectedMoods: ['noSpicy'],
       budget: 'under50',
     });
     const bad = recommendations.filter((item) => hasSpicy(getVisibleFoods(item)));
@@ -182,7 +182,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
   {
     const recommendations = runSamples(foods, {
       ...baseInput,
-      selectedMoods: ['不想吃太饱'],
+      selectedMoods: ['eatLight'],
       budget: 'under20',
     });
     const lightMealExists = hasLightMeal(foods);
@@ -217,7 +217,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
   {
     const recommendations = runSamples(foods, {
       ...baseInput,
-      selectedMoods: ['想奖励自己'],
+      selectedMoods: ['reward'],
       budget: 'under50',
     });
     const rewardExists = hasRewardMain(foods);
@@ -254,7 +254,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
   {
     const input: DecisionInput = {
       ...baseInput,
-      selectedMoods: ['不知道想吃啥'],
+      selectedMoods: ['noIdea'],
       budget: 'under50',
     };
     const before = withMockedRandom(0, () => recommendFood(foods, [], input));

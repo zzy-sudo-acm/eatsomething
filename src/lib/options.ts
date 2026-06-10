@@ -1,40 +1,20 @@
 import { Distance, Feedback, FoodType, MealRole, PriceRange, Satiety, Stability, TabKey } from '../types';
+import { moodLabel, primaryMoodIds, selectableMoodIds, toMoodId } from './moods';
 
-export const moodOptions = [
-  '懒得出门',
-  '想省钱',
-  '想奖励自己',
-  '饿疯了',
-  '不知道想吃啥',
-  '不想吃辣',
-  '想吃热的',
-  '不想排队',
-  '不想踩雷',
-  '刚考完',
-  '想喝点东西',
-  '想喝奶茶',
-  '不想吃太饱',
-];
+// 状态选项现在是稳定 id,显示文案见 moods.ts。
+export const moodOptions: string[] = [...selectableMoodIds];
 
 // High-frequency states surfaced on the first screen of the Decide page.
-export const primaryMoodOptions = [
-  '懒得出门',
-  '想省钱',
-  '想奖励自己',
-  '饿疯了',
-  '不知道想吃啥',
-  '不想吃辣',
-  '刚考完',
-];
+export const primaryMoodOptions: string[] = [...primaryMoodIds];
 
-export const relationshipMoodAliases = ['和女友一起'];
-export const coupleFriendlyTags = ['适合两个人', ...relationshipMoodAliases];
+// 仅菜品可用、不能作为「状态」参与推荐的关系类标签。
+export const coupleFriendlyTags = ['coupleFriendly'];
 
-export const isRelationshipMood = (mood: string) => relationshipMoodAliases.includes(mood);
+export const isRelationshipMood = (mood: string) => toMoodId(mood) === 'coupleFriendly';
 
 export const stripRelationshipMoods = (moods: string[]) => moods.filter((mood) => !isRelationshipMood(mood));
 
-export const displayMoodLabel = (mood: string) => (isRelationshipMood(mood) ? '适合两个人' : mood);
+export const displayMoodLabel = (mood: string) => moodLabel(mood);
 
 export const priceLabels: Record<PriceRange, string> = {
   under10: '10以内',

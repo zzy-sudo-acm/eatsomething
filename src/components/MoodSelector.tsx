@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { moodLabel } from '../lib/moods';
 
 interface MoodSelectorProps {
   title: string;
@@ -35,7 +36,7 @@ export function MoodSelector({ title, options, selected, onChange, primary }: Mo
         aria-pressed={active}
         onClick={() => toggle(mood)}
       >
-        {mood}
+        {moodLabel(mood)}
       </button>
     );
   };

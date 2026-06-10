@@ -1,6 +1,7 @@
 import { defaultFoods } from '../data/defaultFoods';
 import { DecisionHistory, Distance, FoodItem, FoodType, MealRole, Satiety, Stability } from '../types';
 import { inferPriceRangeFromEstimatedPrice } from './options';
+import { toMoodIds } from './moods';
 
 const FOOD_KEY = 'mealmood.foods.v01';
 const HISTORY_KEY = 'mealmood.history.v01';
@@ -110,7 +111,9 @@ export const normalizeFood = (food: FoodItem | ImportableFood): FoodItem => {
     estimatedPrice,
     satiety: isSatiety(draft.satiety) ? draft.satiety : inferSatiety(draft, mealRole),
     mealRole,
-    tags: Array.isArray(draft.tags) ? draft.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+    tags: Array.isArray(draft.tags)
+      ? toMoodIds(draft.tags.filter((tag): tag is string => typeof tag === 'string'))
+      : [],
     spicy: typeof draft.spicy === 'boolean' ? draft.spicy : false,
     stability: isStability(draft.stability) ? draft.stability : 'medium',
     createdAt,
@@ -164,8 +167,19 @@ export const resetFoods = (): FoodItem[] => {
   return defaults;
 };
 
-export const loadHistory = (): DecisionHistory[] =>
-  safeParse<DecisionHistory[]>(localStorage.getItem(HISTORY_KEY), []);
+// 旧版本把中文文案直接存进了历史,这里统一迁移成稳定 id。
+const normalizeHistoryEntry = (entry: DecisionHistory): DecisionHistory => ({
+  ...entry,
+  selectedMoods: toMoodIds(entry.selectedMoods ?? []),
+  partnerMoods: entry.partnerMoods ? toMoodIds(entry.partnerMoods) : undefined,
+});
+
+export const loadHistory = (): DecisionHistory[] => {
+  const history = safeParse<DecisionHistory[]>(localStorage.getItem(HISTORY_KEY), []);
+  const normalized = history.map(normalizeHistoryEntry);
+  if (JSON.stringify(normalized) !== JSON.stringify(history)) saveHistory(normalized);
+  return normalized;
+};
 
 export const saveHistory = (history: DecisionHistory[]) => {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history));

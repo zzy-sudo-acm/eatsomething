@@ -13,6 +13,7 @@ import {
   saveTheme,
   ThemeMode,
 } from './lib/storage';
+import { applyUpdate } from './lib/pwa';
 import { DecidePage } from './pages/DecidePage';
 import { HistoryPage } from './pages/HistoryPage';
 import { LibraryPage } from './pages/LibraryPage';
@@ -25,6 +26,13 @@ export default function App() {
   const [history, setHistory] = useState<DecisionHistory[]>(() => loadHistory());
   const [theme, setTheme] = useState<ThemeMode>(() => loadTheme());
   const [devMode, setDevMode] = useState<boolean>(() => loadDevMode());
+  const [updateReady, setUpdateReady] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setUpdateReady(true);
+    window.addEventListener('mealmood:sw-update', handler);
+    return () => window.removeEventListener('mealmood:sw-update', handler);
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -65,7 +73,7 @@ export default function App() {
           <DecidePage foods={foods} history={history} devMode={devMode} onAddHistory={addHistoryEntry} />
         )}
         {activeTab === 'library' && <LibraryPage foods={foods} onSaveFoods={updateFoods} />}
-        {activeTab === 'history' && <HistoryPage history={history} />}
+        {activeTab === 'history' && <HistoryPage history={history} foods={foods} />}
         {activeTab === 'settings' && (
           <SettingsPage
             foods={foods}
@@ -78,6 +86,14 @@ export default function App() {
           />
         )}
       </main>
+      {updateReady && (
+        <div className="update-toast" role="status">
+          <span>发现新版本，厨房刚出锅。</span>
+          <button type="button" onClick={applyUpdate}>
+            点击刷新
+          </button>
+        </div>
+      )}
       <BottomTabs activeTab={activeTab} onChange={setActiveTab} />
     </div>
   );

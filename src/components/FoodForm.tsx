@@ -12,6 +12,7 @@ import {
   typeLabels,
 } from '../lib/options';
 import { makeId } from '../lib/storage';
+import { toMoodIds } from '../lib/moods';
 
 interface FoodFormProps {
   initial?: FoodItem;
@@ -24,8 +25,8 @@ const typeOptions: FoodType[] = ['meal', 'snack', 'drink', 'happy', 'date'];
 const mealRoleOptions: MealRole[] = ['main', 'lightMeal', 'addon', 'drink'];
 const satietyOptions: Satiety[] = [1, 2, 3, 4, 5];
 const stabilityOptions: Stability[] = ['high', 'medium', 'low'];
-const foodTagOptions = [...moodOptions, '适合两个人'];
-const normalizeTags = (values: string[]) => Array.from(new Set(values.map(displayMoodLabel)));
+const foodTagOptions = [...moodOptions, 'coupleFriendly'];
+const normalizeTags = (values: string[]) => toMoodIds(values);
 const autoPriceLabels: Record<PriceRange, string> = {
   under10: '10元内',
   under20: '20元内',
@@ -230,7 +231,7 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
               className={`chip chip--small ${tags.includes(tag) ? 'is-selected' : ''}`}
               onClick={() => toggleTag(tag)}
             >
-              {tag}
+              {displayMoodLabel(tag)}
             </button>
           ))}
         </div>
