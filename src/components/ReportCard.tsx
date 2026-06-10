@@ -5,7 +5,6 @@ import {
   CircleDollarSign,
   Compass,
   MessageCircle,
-  Repeat2,
   Siren,
   TrendingUp,
   Trophy,
