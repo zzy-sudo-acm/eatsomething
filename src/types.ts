@@ -16,6 +16,9 @@ export type MealIntent = 'fullMeal' | 'lightMeal' | 'drink';
 /** Auto-detected time-of-day bucket. */
 export type MealPeriod = 'breakfast' | 'lunch' | 'dinner' | 'lateNight' | 'other';
 
+/** Recommendation outcome. */
+export type RecommendationStatus = 'success' | 'degraded' | 'noMatch';
+
 export interface FoodItem {
   id: string;
   name: string;
@@ -91,17 +94,20 @@ export interface DecisionCopy {
 }
 
 export interface Recommendation {
-  /** The full meal plan (main + optional drink/addon). */
-  plan: MealPlan;
-  /** Alternative meal plans (up to 2). */
+  /** Outcome status: success, degraded fallback, or no legal candidate. */
+  status: RecommendationStatus;
+  /** The full meal plan. Present when status !== 'noMatch'. */
+  plan?: MealPlan;
+  /** Alternative meal plans (up to 2). Empty for noMatch. */
   alternatives: MealPlan[];
-  /** Legacy compat: points to plan.main. */
-  food: FoodItem;
-  score: number;
+  /** Legacy compat: points to plan.main. Present when status !== 'noMatch'. */
+  food?: FoodItem;
+  /** Main-food score. Present when status !== 'noMatch'. */
+  score?: number;
   copy: DecisionCopy;
   scoredFoods: ScoredFood[];
-  /** True when the engine fell back because no ideal candidate existed. */
+  /** True when recommendation is not an ideal match. */
   degraded: boolean;
-  /** Human-readable degradation note. */
+  /** Human-readable note explaining the fallback. */
   degradeReason?: string;
 }

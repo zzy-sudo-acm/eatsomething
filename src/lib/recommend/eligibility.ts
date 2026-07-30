@@ -151,6 +151,49 @@ export const isEligibleAsAddon = (
   return { eligible: true };
 };
 
+/**
+ * Degradation eligibility: like isEligibleAsMain but relaxes fullMeal's
+ * restriction on lightMeal. Used when no 'main' food exists.
+ *
+ * All OTHER hard constraints (budget, spicy, starving, etc.) still apply.
+ */
+export const isEligibleAsMainDegraded = (
+  food: FoodItem,
+  intent: MealIntent,
+  input: DecisionInput,
+  moods: string[],
+  budgetLimit: number = Infinity,
+  hasDrinkInCatalog: boolean = true
+): EligibilityResult => {
+  // Same hard constraints
+  if (food.estimatedPrice > budgetLimit) {
+    return { eligible: false, reason: `超出预算上限(${budgetLimit}元)` };
+  }
+  if (moods.includes('noSpicy') && food.spicy) {
+    return { eligible: false, reason: '明确不想吃辣' };
+  }
+  if (moods.includes('starving') && food.satiety <= 1) {
+    return { eligible: false, reason: '饿疯了需要顶饱' };
+  }
+  // Starving + low-satiety lightMeal → still blocked
+  if (moods.includes('starving') && food.mealRole === 'lightMeal' && food.satiety <= 2) {
+    return { eligible: false, reason: '饿疯了，轻食不够顶' };
+  }
+
+  if (intent === 'fullMeal') {
+    // Relax: allow lightMeal as degraded fallback
+    if (food.mealRole === 'main' || food.mealRole === 'lightMeal') return { eligible: true };
+    if (food.mealRole === 'drink') return { eligible: false, reason: '饮料不能假装正餐' };
+    if (food.mealRole === 'addon') {
+      return { eligible: false, reason: '加餐不够当正餐' };
+    }
+    return { eligible: false };
+  }
+
+  // For other intents, use normal eligibility
+  return isEligibleAsMain(food, intent, input, moods, budgetLimit, hasDrinkInCatalog);
+};
+
 // ---- hard-block reasons (for debug / display) ----
 
 export const getHardBlockReasons = (

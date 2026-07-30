@@ -75,6 +75,7 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   }, []);
 
   const canDecide = foods.length > 0;
+  const isNoMatch = recommendation?.status === 'noMatch';
   const isLogged = Boolean(submittedFeedback) || pickedNoRating;
   const cleanSelectedMoods = useMemo(() => stripRelationshipMoods(selectedMoods), [selectedMoods]);
   const cleanPartnerMoods = useMemo(() => stripRelationshipMoods(partnerMoods), [partnerMoods]);
@@ -111,7 +112,7 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   };
 
   const createSkipEntry = (): DecisionHistory | undefined => {
-    if (!recommendation || isLogged) return undefined;
+    if (!recommendation || isLogged || isNoMatch || !recommendation.plan) return undefined;
 
     return {
       id: makeId('history'),
@@ -183,31 +184,34 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
     timerRef.current = window.setTimeout(() => runRecommendation(nextHistory), delay);
   };
 
-  const baseEntry = (): DecisionHistory => ({
-    id: makeId('history'),
-    foodId: recommendation!.plan.main.id,
-    foodName: recommendation!.plan.main.name,
-    selectedMoods: activeInput.selectedMoods,
-    partnerMoods: activeInput.partnerMoods,
-    budget: activeInput.budget,
-    distance: activeInput.distance,
-    createdAt: Date.now(),
-    drinkId: recommendation!.plan.drink?.id,
-    drinkName: recommendation!.plan.drink?.name,
-    addonId: recommendation!.plan.addon?.id,
-    addonName: recommendation!.plan.addon?.name,
-    totalPrice: recommendation!.plan.totalPrice,
-  });
+  const baseEntry = (): DecisionHistory => {
+    const plan = recommendation!.plan!;
+    return {
+      id: makeId('history'),
+      foodId: plan.main.id,
+      foodName: plan.main.name,
+      selectedMoods: activeInput.selectedMoods,
+      partnerMoods: activeInput.partnerMoods,
+      budget: activeInput.budget,
+      distance: activeInput.distance,
+      createdAt: Date.now(),
+      drinkId: plan.drink?.id,
+      drinkName: plan.drink?.name,
+      addonId: plan.addon?.id,
+      addonName: plan.addon?.name,
+      totalPrice: plan.totalPrice,
+    };
+  };
 
   const handleFeedback = (feedback: Feedback) => {
-    if (!recommendation || isLogged) return;
+    if (!recommendation || isLogged || isNoMatch) return;
     setSubmittedFeedback(feedback);
     buzz(12);
     onAddHistory({ ...baseEntry(), feedback });
   };
 
   const handlePick = () => {
-    if (!recommendation || isLogged) return;
+    if (!recommendation || isLogged || isNoMatch) return;
     setPickedNoRating(true);
     buzz(12);
     onAddHistory({ ...baseEntry(), feedback: undefined });

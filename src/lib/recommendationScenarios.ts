@@ -49,7 +49,7 @@ const runSamples = (
 
 /** Get all visible MAIN foods (main + alt mains). */
 const getVisibleMains = (r: Recommendation): FoodItem[] => [
-  r.plan.main,
+  r.plan!.main,
   ...r.alternatives.map((a) => a.main),
 ];
 
@@ -60,7 +60,7 @@ const isMilkTea = (f: FoodItem) =>
   f.name.includes('奶茶') || (f.mealRole === 'drink' && f.tags.includes('milkTea'));
 
 const summarize = (rs: Recommendation[]) =>
-  Array.from(new Set(rs.map((r) => r.plan.main.name))).join('、') || '无';
+  Array.from(new Set(rs.map((r) => r.plan!.main.name))).join('、') || '无';
 
 const buildResult = (
   id: string,
@@ -91,7 +91,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       mealIntent: 'fullMeal',
     };
     const recs = runSamples(foods, input);
-    const badMain = recs.filter((r) => isDrink(r.plan.main) || isAddonFood(r.plan.main));
+    const badMain = recs.filter((r) => isDrink(r.plan!.main) || isAddonFood(r.plan!.main));
     const badAlt = recs.filter((r) =>
       r.alternatives.some((a) => isDrink(a.main) || isAddonFood(a.main))
     );
@@ -118,11 +118,11 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
     };
     const recs = runSamples(foods, input);
     // Main must not be drink (hard fail)
-    const drinkMain = recs.filter((r) => isDrink(r.plan.main));
+    const drinkMain = recs.filter((r) => isDrink(r.plan!.main));
     // If higher-occasion foods exist, occasionLevel=1 should be rare
     const hasHigher = foods.some((f) => f.mealRole === 'main' && f.occasionLevel >= 2 && f.estimatedPrice <= 50);
     const tooCasual = recs.filter(
-      (r) => r.plan.main.occasionLevel <= 1 && r.plan.main.mealRole === 'main'
+      (r) => r.plan!.main.occasionLevel <= 1 && r.plan!.main.mealRole === 'main'
     );
     // Fail if drinks appear, OR if too-casual dominates when better options exist
     const passed = drinkMain.length === 0 && !(hasHigher && tooCasual.length > recs.length * 0.6);
@@ -163,13 +163,13 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       : false;
 
     // Milk tea must NOT be the main
-    const milkTeaMain = recs.filter((r) => isMilkTea(r.plan.main));
+    const milkTeaMain = recs.filter((r) => isMilkTea(r.plan!.main));
     // Milk tea SHOULD be drink companion (if combo possible)
     const withMilkTea = recs.filter(
-      (r) => r.plan.drink && isMilkTea(r.plan.drink)
+      (r) => r.plan!.drink && isMilkTea(r.plan!.drink)
     );
     // Total must be within budget
-    const over = recs.filter((r) => r.plan.totalPrice > 50);
+    const over = recs.filter((r) => r.plan!.totalPrice > 50);
 
     const passed =
       milkTeaMain.length === 0 && over.length === 0 &&
@@ -213,7 +213,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
         mealIntent: 'drink',
       };
       const recs1 = runSamples(foods, input1);
-      const notDrink1 = recs1.filter((r) => !isDrink(r.plan.main));
+      const notDrink1 = recs1.filter((r) => !isDrink(r.plan!.main));
       const passed1 = notDrink1.length === 0;
 
       // Test without specific drink mood
@@ -224,7 +224,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
         mealIntent: 'drink',
       };
       const recs2 = runSamples(foods, input2);
-      const notDrink2 = recs2.filter((r) => !isDrink(r.plan.main));
+      const notDrink2 = recs2.filter((r) => !isDrink(r.plan!.main));
       const passed2 = notDrink2.length === 0;
 
       const passed = passed1 && passed2;
@@ -254,10 +254,10 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
 
     // Main MUST NOT be drink or addon
     const badRole = recs.filter(
-      (r) => isDrink(r.plan.main) || isAddonFood(r.plan.main)
+      (r) => isDrink(r.plan!.main) || isAddonFood(r.plan!.main)
     );
     // Main satiety must be >= 4 (or it's a fail)
-    const lowSatiety = recs.filter((r) => r.plan.main.satiety < 4);
+    const lowSatiety = recs.filter((r) => r.plan!.main.satiety < 4);
 
     const passed = badRole.length === 0 && lowSatiety.length === 0;
     results.push(buildResult(
@@ -268,7 +268,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
         ? `通过 样本: ${summarize(recs)}`
         : badRole.length > 0
           ? `饮料/addon成为主推荐: ${summarize(badRole)}`
-          : `饱腹<4: ${lowSatiety.map(r => `${r.plan.main.name}(${r.plan.main.satiety})`).join('、')}`
+          : `饱腹<4: ${lowSatiety.map(r => `${r.plan!.main.name}(${r.plan!.main.satiety})`).join('、')}`
     ));
   }
 
@@ -283,9 +283,9 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
     };
     const recs = runSamples(foods, input);
 
-    const spicyMain = recs.filter((r) => isSpicy(r.plan.main));
-    const spicyDrink = recs.filter((r) => r.plan.drink && isSpicy(r.plan.drink));
-    const spicyAddon = recs.filter((r) => r.plan.addon && isSpicy(r.plan.addon));
+    const spicyMain = recs.filter((r) => isSpicy(r.plan!.main));
+    const spicyDrink = recs.filter((r) => r.plan!.drink && isSpicy(r.plan!.drink));
+    const spicyAddon = recs.filter((r) => r.plan!.addon && isSpicy(r.plan!.addon));
     const spicyAlt = recs.filter((r) =>
       r.alternatives.some((a) => isSpicy(a.main))
     );
@@ -321,8 +321,8 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
     const skippedHistory: DecisionHistory[] = [
       {
         id: 'scenario-skip',
-        foodId: before.plan.main.id,
-        foodName: before.plan.main.name,
+        foodId: before.plan!.main.id,
+        foodName: before.plan!.main.name,
         selectedMoods: input.selectedMoods,
         budget: input.budget,
         distance: input.distance,
@@ -334,15 +334,15 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       recommendFood(foods, skippedHistory, input, () => 0.3, dinnerTime)
     );
     const beforeScore =
-      before.scoredFoods.find((item) => item.food.id === before.plan.main.id)?.score ?? 0;
+      before.scoredFoods.find((item) => item.food.id === before.plan!.main.id)?.score ?? 0;
     const afterScore =
-      after.scoredFoods.find((item) => item.food.id === before.plan.main.id)?.score ?? 0;
+      after.scoredFoods.find((item) => item.food.id === before.plan!.main.id)?.score ?? 0;
 
     results.push(buildResult(
       'scenario-7-skip-penalty',
       '场景7: skipped食物10分钟内明显降权',
-      after.plan.main.id !== before.plan.main.id && afterScore <= beforeScore - 20,
-      `跳过 ${before.plan.main.name}: ${beforeScore} → ${afterScore}; 跳过后=${after.plan.main.name}`
+      after.plan!.main.id !== before.plan!.main.id && afterScore <= beforeScore - 20,
+      `跳过 ${before.plan!.main.name}: ${beforeScore} → ${afterScore}; 跳过后=${after.plan!.main.name}`
     ));
   }
 
@@ -364,13 +364,13 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
         budget,
       };
       const recs = runSamples(foods, input);
-      const over = recs.filter((r) => r.plan.totalPrice > limit);
+      const over = recs.filter((r) => r.plan!.totalPrice > limit);
       results.push(buildResult(
         `scenario-8-budget-cap-${budget}`,
         `场景8a: 默认库${budget}总价≤${limit}`,
         over.length === 0,
         over.length
-          ? `超预算: ${over.map((r) => `${r.plan.main.name}(¥${r.plan.totalPrice})`).join('、')}`
+          ? `超预算: ${over.map((r) => `${r.plan!.main.name}(¥${r.plan!.totalPrice})`).join('、')}`
           : `通过 样本: ${summarize(recs)}`
       ));
     }
@@ -416,20 +416,18 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       budget: 'under20',
     };
     const customRecs = runSamples(customFoods, customInput);
-    // All foods exceed budget → every result should be degraded
-    const notDegraded = customRecs.filter((r) => !r.degraded);
-    const noBudgetReason = customRecs.filter(
-      (r) => !r.degradeReason || !r.degradeReason.includes('超出预算')
-    );
+    // All foods exceed budget → every result must be noMatch (NOT degraded with a fake food)
+    const notNoMatch = customRecs.filter((r) => r.status !== 'noMatch');
+    const hasFakeFood = customRecs.filter((r) => r.status === 'noMatch' && (r.plan !== undefined || r.food !== undefined));
     results.push(buildResult(
       'scenario-8-budget-cap-custom',
-      '场景8b: 全超预算时全部降级+说明原因',
-      notDegraded.length === 0 && noBudgetReason.length === 0,
-      notDegraded.length > 0
-        ? `${notDegraded.length}次未降级`
-        : noBudgetReason.length > 0
-          ? `${noBudgetReason.length}次缺少预算原因说明`
-          : `通过 全部${customRecs.length}次降级 样本: ${summarize(customRecs)}`
+      '场景8b: 全超预算时全部noMatch且不返回伪造食物',
+      notNoMatch.length === 0 && hasFakeFood.length === 0,
+      notNoMatch.length > 0
+        ? `${notNoMatch.length}次未返回noMatch`
+        : hasFakeFood.length > 0
+          ? `${hasFakeFood.length}次noMatch但携带了plan/food`
+          : `通过 全部${customRecs.length}次noMatch`
     ));
   }
 
@@ -445,10 +443,10 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
     const recs = runSamples(foods, input);
 
     const forcedAddons = recs.filter((r) => {
-      if (!r.plan.addon) return false;
+      if (!r.plan!.addon) return false;
       return (
-        r.plan.main.satiety >= 4 &&
-        !r.plan.reasons.some((reason) => reason.includes('奖励') || reason.includes('分享'))
+        r.plan!.main.satiety >= 4 &&
+        !r.plan!.reasons.some((reason) => reason.includes('奖励') || reason.includes('分享'))
       );
     });
 
@@ -458,8 +456,8 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       '场景9: 无明确需求不强行加餐凑预算',
       passed,
       passed
-        ? `通过 饮料${recs.filter(r => r.plan.drink).length}次 加餐${recs.filter(r => r.plan.addon).length}次 样本: ${summarize(recs)}`
-        : `强行加餐: ${forcedAddons.length}次 → ${forcedAddons.map(r => r.plan.main.name).join('、')}`
+        ? `通过 饮料${recs.filter(r => r.plan!.drink).length}次 加餐${recs.filter(r => r.plan!.addon).length}次 样本: ${summarize(recs)}`
+        : `强行加餐: ${forcedAddons.length}次 → ${forcedAddons.map(r => r.plan!.main.name).join('、')}`
     ));
   }
 

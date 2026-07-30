@@ -11,6 +11,7 @@ import { distanceLabels, foodDistanceLabels, stabilityLabels } from '../options'
 import { moodLabel, toMoodIds } from '../moods';
 import { isRelationshipMood } from '../options';
 import { hasDrinkMood } from './eligibility';
+import { getBudgetLimit } from './normalizeInput';
 
 const dayMs = 24 * 60 * 60 * 1000;
 
@@ -199,5 +200,55 @@ export const buildCopy = (
     risk,
     punchline,
     alternatives: alternatives.map((a) => a.main.name),
+  };
+};
+
+/**
+ * Build copy for a noMatch result — explains WHY nothing could be recommended
+ * and gives actionable suggestions.
+ */
+export const buildNoMatchCopy = (
+  intent: MealIntent,
+  scoredMains: ScoredFood[],
+  budgetLimit: number,
+  moods: string[],
+  degradeReason: string
+): DecisionCopy => {
+  const allOverBudget = scoredMains.every((item) => item.food.estimatedPrice > budgetLimit);
+  const allSpicy = moods.includes('noSpicy') && scoredMains.every((item) => item.food.spicy);
+  const intentBlocked = intent === 'fullMeal' &&
+    scoredMains.filter((item) => !item.hardBlocked).length === 0 &&
+    scoredMains.some((item) => item.food.mealRole === 'main' && item.hardBlocked);
+
+  let suggestion: string;
+  if (allOverBudget) {
+    suggestion = '当前预算内没有可用食物，可以提高预算或新增便宜一点的菜品。';
+  } else if (allSpicy) {
+    suggestion = '菜品库里没有符合"不吃辣"的选项，可以补充不辣菜品。';
+  } else if (intent === 'drink') {
+    suggestion = '菜品库里没有可用饮料，可以新增饮料或切换用餐意图。';
+  } else if (intent === 'fullMeal' && intentBlocked) {
+    suggestion = '当前没有符合条件的正餐，可以切换为"随便垫一下"或新增正餐。';
+  } else {
+    suggestion = '可以提高预算、调整用餐意图，或往菜品库里再加点东西。';
+  }
+
+  const reason = `这次真判不出来。${degradeReason}。${suggestion}`;
+
+  const noMatchPunchlines = [
+    '系统尽力了，锅先放着，等你调完参数再来。',
+    '胃说了：这条件没法干活，换几个参数试试。',
+    '判决失败不是你的错，是条件太苛刻了。',
+    '法官宣布休庭——证据不足，请补充菜品库。',
+  ];
+
+  return {
+    title: '这次真判不出来',
+    verdict: '无匹配',
+    verdictTone: 'risky',
+    reason,
+    risk: '系统已尽力，但当前条件没有合法候选。这不是 bug，是硬约束在保护你的胃。',
+    punchline: pick(noMatchPunchlines),
+    alternatives: [],
   };
 };

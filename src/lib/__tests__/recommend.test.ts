@@ -31,7 +31,6 @@ describe('推荐场景自检', () => {
   it('默认菜品库全部场景通过', () => {
     const report = runRecommendationScenarios(defaultFoods);
     const failed = report.results.filter((item) => !item.passed);
-    // Log failures for debugging
     if (failed.length) {
       console.log('FAILED SCENARIOS:');
       failed.forEach((f) => console.log(`  ${f.id}: ${f.name}\n    ${f.details}`));
@@ -91,15 +90,159 @@ describe('旧中文文案数据兼容', () => {
     const spicyScored = result.scoredFoods.filter((item) => item.food.spicy);
     expect(spicyScored.length).toBeGreaterThan(0);
     spicyScored.forEach((item) => expect(item.hardBlocked).toBe(true));
-    expect(result.food.spicy).toBe(false);
+    expect(result.food!.spicy).toBe(false);
   });
 });
 
+// =========================================================================
+// noMatch tests — core of this round
+// =========================================================================
+describe('noMatch: 无合法候选不返回 hardBlocked 食物', () => {
+  const now = Date.now();
+
+  const makeFood = (overrides: Partial<FoodItem> & { id: string; name: string }): FoodItem => ({
+    priceRange: 'under20',
+    distance: 'near',
+    type: 'meal',
+    estimatedPrice: 15,
+    satiety: 4,
+    mealRole: 'main',
+    occasionLevel: 2,
+    tags: [],
+    spicy: false,
+    stability: 'medium',
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  });
+
+  // ---- Test 1: all over-budget → noMatch ----
+  it('全部超预算 → noMatch, 不得返回超预算食物', () => {
+    const foods: FoodItem[] = [
+      makeFood({ id: 't1-a', name: '28元正餐', estimatedPrice: 28, priceRange: 'under50' }),
+      makeFood({ id: 't1-b', name: '30元正餐', estimatedPrice: 30, priceRange: 'under50' }),
+    ];
+    const input: DecisionInput = { ...baseInput, budget: 'under20', mealIntent: 'fullMeal' };
+    const result = recommendFood(foods, [], input, () => 0.5, dinnerTime);
+
+    expect(result.status).toBe('noMatch');
+    expect(result.plan).toBeUndefined();
+    expect(result.food).toBeUndefined();
+    expect(result.alternatives).toEqual([]);
+    expect(result.degraded).toBe(true);
+    expect(result.degradeReason).toBeTruthy();
+  });
+
+  // ---- Test 2: all spicy + noSpicy → noMatch ----
+  it('全部辣食 + noSpicy → noMatch', () => {
+    const foods: FoodItem[] = [
+      makeFood({ id: 't2-a', name: '辣菜A', spicy: true, estimatedPrice: 15 }),
+      makeFood({ id: 't2-b', name: '辣菜B', spicy: true, estimatedPrice: 18 }),
+    ];
+    const input: DecisionInput = {
+      ...baseInput,
+      selectedMoods: ['noSpicy'],
+      budget: 'under20',
+      mealIntent: 'fullMeal',
+    };
+    const result = recommendFood(foods, [], input, () => 0.5, dinnerTime);
+
+    expect(result.status).toBe('noMatch');
+    expect(result.plan).toBeUndefined();
+    expect(result.food).toBeUndefined();
+    // All foods should be hardBlocked
+    result.scoredFoods.forEach((item) => expect(item.hardBlocked).toBe(true));
+  });
+
+  // ---- Test 3: only drinks in budget, fullMeal → noMatch ----
+  it('fullMeal + 只有饮料 → noMatch, 饮料不能降级为正餐', () => {
+    const foods: FoodItem[] = [
+      makeFood({ id: 't3-a', name: '奶茶', mealRole: 'drink', type: 'drink', estimatedPrice: 15, satiety: 1, occasionLevel: 1 }),
+      makeFood({ id: 't3-b', name: '果汁', mealRole: 'drink', type: 'drink', estimatedPrice: 12, satiety: 1, occasionLevel: 1 }),
+    ];
+    const input: DecisionInput = {
+      ...baseInput,
+      selectedMoods: [],
+      budget: 'under20',
+      mealIntent: 'fullMeal',
+    };
+    const result = recommendFood(foods, [], input, () => 0.5, dinnerTime);
+
+    expect(result.status).toBe('noMatch');
+    expect(result.plan).toBeUndefined();
+    expect(result.food).toBeUndefined();
+  });
+
+  // ---- Test 4: fullMeal 合法退化轻食 ----
+  it('fullMeal 无正餐但有轻食 → degraded, plan.main.mealRole=lightMeal', () => {
+    const foods: FoodItem[] = [
+      makeFood({ id: 't4-a', name: '轻食A', mealRole: 'lightMeal', type: 'snack', estimatedPrice: 12, satiety: 2, occasionLevel: 1, tags: ['eatLight'] }),
+      makeFood({ id: 't4-b', name: '轻食B', mealRole: 'lightMeal', type: 'snack', estimatedPrice: 10, satiety: 3, occasionLevel: 1, tags: ['eatLight'] }),
+    ];
+    const input: DecisionInput = {
+      ...baseInput,
+      selectedMoods: [],
+      budget: 'under20',
+      mealIntent: 'fullMeal',
+    };
+    const result = recommendFood(foods, [], input, () => 0.5, dinnerTime);
+
+    expect(result.status).toBe('degraded');
+    expect(result.plan).toBeDefined();
+    expect(result.plan!.main.mealRole).toBe('lightMeal');
+    expect(result.food).toBeDefined();
+    expect(result.degraded).toBe(true);
+    expect(result.degradeReason).toContain('轻食');
+  });
+
+  // ---- Test 5: starving + only low-satiety lightMeal → noMatch ----
+  it('starving + 仅低饱腹轻食 → noMatch, 不能退化', () => {
+    const foods: FoodItem[] = [
+      makeFood({ id: 't5-a', name: '粥', mealRole: 'lightMeal', type: 'snack', estimatedPrice: 8, satiety: 2, occasionLevel: 1 }),
+    ];
+    const input: DecisionInput = {
+      ...baseInput,
+      selectedMoods: ['starving'],
+      budget: 'under20',
+      mealIntent: 'fullMeal',
+    };
+    const result = recommendFood(foods, [], input, () => 0.5, dinnerTime);
+
+    expect(result.status).toBe('noMatch');
+    expect(result.plan).toBeUndefined();
+    expect(result.food).toBeUndefined();
+  });
+
+  // ---- Test 6: noMatch 不写入历史（逻辑级验证） ----
+  it('noMatch 结果不应生成历史条目', () => {
+    const foods: FoodItem[] = [
+      makeFood({ id: 't6-a', name: '只有辣菜', spicy: true, estimatedPrice: 15 }),
+    ];
+    const input: DecisionInput = {
+      ...baseInput,
+      selectedMoods: ['noSpicy'],
+      budget: 'under20',
+      mealIntent: 'fullMeal',
+    };
+    const result = recommendFood(foods, [], input, () => 0.5, dinnerTime);
+
+    expect(result.status).toBe('noMatch');
+    // Verify no plan/food for history entry creation
+    expect(result.plan).toBeUndefined();
+    expect(result.food).toBeUndefined();
+    // score should be undefined
+    expect(result.score).toBeUndefined();
+  });
+});
+
+// =========================================================================
+// Existing MealPlan structure tests
+// =========================================================================
 describe('MealPlan 结构', () => {
   it('fullMeal 时主推荐不能是饮料', () => {
     const input: DecisionInput = { ...baseInput, mealIntent: 'fullMeal', budget: 'under50' };
     const result = recommendFood(defaultFoods, [], input, Math.random, dinnerTime);
-    expect(result.plan.main.mealRole).not.toBe('drink');
+    expect(result.food!.mealRole).not.toBe('drink');
   });
 
   it('drink 意图 + 存在饮料 → 所有主推荐都是饮料', () => {
@@ -108,17 +251,16 @@ describe('MealPlan 结构', () => {
       mealIntent: 'drink',
       budget: 'under20',
     };
-    // Test 5 deterministic seeds
     for (let i = 0; i < 5; i++) {
       const result = recommendFood(defaultFoods, [], input, () => i / 5, dinnerTime);
-      expect(result.plan.main.mealRole).toBe('drink');
+      expect(result.food!.mealRole).toBe('drink');
     }
   });
 
   it('组合总价不超过预算上限', () => {
     const input: DecisionInput = { ...baseInput, budget: 'under20' };
     const result = recommendFood(defaultFoods, [], input, Math.random, dinnerTime);
-    expect(result.plan.totalPrice).toBeLessThanOrEqual(20);
+    expect(result.plan!.totalPrice).toBeLessThanOrEqual(20);
   });
 
   it('milkTea + dinner fullMeal 时奶茶不应成为主推荐', () => {
@@ -129,7 +271,7 @@ describe('MealPlan 结构', () => {
       budget: 'under50',
     };
     const result = recommendFood(defaultFoods, [], input, Math.random, dinnerTime);
-    const isMilkTeaMain = result.plan.main.name.includes('奶茶') || result.plan.main.tags.includes('milkTea');
+    const isMilkTeaMain = result.food!.name.includes('奶茶') || result.food!.tags.includes('milkTea');
     expect(isMilkTeaMain).toBe(false);
   });
 
@@ -142,115 +284,34 @@ describe('MealPlan 结构', () => {
     };
     for (let i = 0; i < 5; i++) {
       const result = recommendFood(defaultFoods, [], input, () => i / 5, dinnerTime);
-      expect(result.plan.main.satiety).toBeGreaterThanOrEqual(3);
+      expect(result.food!.satiety).toBeGreaterThanOrEqual(3);
     }
   });
 
-  it('预算硬上限: 超预算食物返回降级结果', () => {
-    // Custom catalogue: only 28 and 30 yuan foods, under20 budget
-    const customFoods: FoodItem[] = [
-      {
-        id: 'test-28',
-        name: '冒菜28元',
-        priceRange: 'under50',
-        distance: 'near',
-        type: 'meal',
-        estimatedPrice: 28,
-        satiety: 4,
-        mealRole: 'main',
-        occasionLevel: 3,
-        tags: [],
-        spicy: false,
-        stability: 'medium',
-        createdAt: 1,
-        updatedAt: 1,
-      },
-      {
-        id: 'test-30',
-        name: '汉堡30元',
-        priceRange: 'under50',
-        distance: 'near',
-        type: 'happy',
-        estimatedPrice: 30,
-        satiety: 4,
-        mealRole: 'main',
-        occasionLevel: 2,
-        tags: [],
-        spicy: false,
-        stability: 'medium',
-        createdAt: 1,
-        updatedAt: 1,
-      },
-    ];
-    const input: DecisionInput = { ...baseInput, budget: 'under20' };
-    const result = recommendFood(customFoods, [], input, Math.random, dinnerTime);
-    // All foods exceed budget → must be degraded with a reason
-    expect(result.degraded).toBe(true);
-    expect(result.degradeReason).toBeTruthy();
-    expect(result.degradeReason).toContain('超出预算');
-    // Over-budget foods must be hard-blocked
-    const overBudgetScored = result.scoredFoods.filter((item) => item.food.estimatedPrice > 20);
-    overBudgetScored.forEach((item) => expect(item.hardBlocked).toBe(true));
-  });
-
   it('备选不包含饮料或加餐(自定义库)', () => {
+    const now = Date.now();
     const tinyFoods: FoodItem[] = [
       {
-        id: 'tiny-main',
-        name: '黄焖鸡',
-        priceRange: 'under20',
-        distance: 'near',
-        type: 'meal',
-        estimatedPrice: 18,
-        satiety: 4,
-        mealRole: 'main',
-        occasionLevel: 2,
-        tags: ['noIdea'],
-        spicy: false,
-        stability: 'high',
-        createdAt: 1,
-        updatedAt: 1,
+        id: 'tiny-main', name: '黄焖鸡', priceRange: 'under20', distance: 'near',
+        type: 'meal', estimatedPrice: 18, satiety: 4, mealRole: 'main',
+        occasionLevel: 2, tags: ['noIdea'], spicy: false, stability: 'high',
+        createdAt: now, updatedAt: now,
       },
       {
-        id: 'tiny-drink',
-        name: '奶茶',
-        priceRange: 'under20',
-        distance: 'near',
-        type: 'drink',
-        estimatedPrice: 15,
-        satiety: 1,
-        mealRole: 'drink',
-        occasionLevel: 1,
-        tags: ['milkTea'],
-        spicy: false,
-        stability: 'medium',
-        createdAt: 1,
-        updatedAt: 1,
+        id: 'tiny-drink', name: '奶茶', priceRange: 'under20', distance: 'near',
+        type: 'drink', estimatedPrice: 15, satiety: 1, mealRole: 'drink',
+        occasionLevel: 1, tags: ['milkTea'], spicy: false, stability: 'medium',
+        createdAt: now, updatedAt: now,
       },
       {
-        id: 'tiny-addon',
-        name: '小吃',
-        priceRange: 'under20',
-        distance: 'near',
-        type: 'snack',
-        estimatedPrice: 10,
-        satiety: 2,
-        mealRole: 'addon',
-        occasionLevel: 1,
-        tags: [],
-        spicy: false,
-        stability: 'medium',
-        createdAt: 1,
-        updatedAt: 1,
+        id: 'tiny-addon', name: '小吃', priceRange: 'under20', distance: 'near',
+        type: 'snack', estimatedPrice: 10, satiety: 2, mealRole: 'addon',
+        occasionLevel: 1, tags: [], spicy: false, stability: 'medium',
+        createdAt: now, updatedAt: now,
       },
     ];
-    const input: DecisionInput = {
-      ...baseInput,
-      mealIntent: 'fullMeal',
-      budget: 'under20',
-    };
+    const input: DecisionInput = { ...baseInput, mealIntent: 'fullMeal', budget: 'under20' };
     const result = recommendFood(tinyFoods, [], input, Math.random, dinnerTime);
-    // Alternatives must not contain drink or addon
     const badAlt = result.alternatives.filter(
       (a) => a.main.mealRole === 'drink' || a.main.mealRole === 'addon'
     );
@@ -307,7 +368,7 @@ describe('确定性 RNG', () => {
   it('相同输入 + 相同 RNG + 相同时间 → 相同结果', () => {
     const a = recommendFood(defaultFoods, [], baseInput, () => 0.5, dinnerTime);
     const b = recommendFood(defaultFoods, [], baseInput, () => 0.5, dinnerTime);
-    expect(a.plan.main.id).toBe(b.plan.main.id);
-    expect(a.plan.totalPrice).toBe(b.plan.totalPrice);
+    expect(a.food!.id).toBe(b.food!.id);
+    expect(a.plan!.totalPrice).toBe(b.plan!.totalPrice);
   });
 });

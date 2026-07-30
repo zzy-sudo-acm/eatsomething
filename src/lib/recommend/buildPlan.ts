@@ -196,7 +196,7 @@ export const buildMealPlanWithDrinkPriority = (
   input: DecisionInput,
   moods: string[],
   rng: () => number
-): { plan: MealPlan; main: ScoredFood; drinkIncluded: boolean; drinkCandidate: ScoredFood | null; addonCandidate: ScoredFood | null } => {
+): { plan: MealPlan; main: ScoredFood; drinkIncluded: boolean; drinkCandidate: ScoredFood | null; addonCandidate: ScoredFood | null } | null => {
   const budgetLimit = getBudgetLimit(input.budget);
   const targetDrink = findTargetDrink(allFoods, budgetLimit, moods, input);
 
@@ -260,14 +260,8 @@ export const buildMealPlanWithDrinkPriority = (
   // Drink couldn't be included — fall back to normal selection
   const main = selectMain(scoredMains, moods, rng);
   if (!main) {
-    // Ultimate fallback
-    return {
-      plan: { main: scoredMains[0]?.food ?? allFoods[0], totalPrice: scoredMains[0]?.food?.estimatedPrice ?? 0, reasons: ['无可选方案'] },
-      main: scoredMains[0],
-      drinkIncluded: false,
-      drinkCandidate: null,
-      addonCandidate: null,
-    };
+    // No legal candidate at all — caller must handle noMatch
+    return null;
   }
 
   const result = buildMealPlan(main, allFoods, input, moods, rng);

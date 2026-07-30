@@ -41,7 +41,9 @@ export function DecisionCard({
   onFeedback,
   onPick,
 }: DecisionCardProps) {
-  const { food, copy } = recommendation;
+  const { copy } = recommendation;
+  const isNoMatch = recommendation.status === 'noMatch';
+  const food = recommendation.food;
   const isCouple = copy.title.includes('你俩') || copy.punchline.includes('你俩');
   const [showDebug, setShowDebug] = useState(false);
   const [confirmLine, setConfirmLine] = useState('');
@@ -49,17 +51,82 @@ export function DecisionCard({
   const visibleConfirmLine = locked ? confirmLine : '';
 
   const handleFeedbackClick = (feedback: VisibleFeedback) => {
-    if (locked) return;
+    if (locked || isNoMatch) return;
     setConfirmLine(pickRandomLine(confirmCopy[feedback]));
     onFeedback(feedback);
   };
 
   const handlePickClick = () => {
-    if (locked) return;
+    if (locked || isNoMatch) return;
     setConfirmLine(pickRandomLine(pickConfirm));
     onPick();
   };
 
+  // ---- noMatch: show a suggestion card instead of a food recommendation ----
+  if (isNoMatch) {
+    return (
+      <article className="decision-card anim-pop decision-card--tone-risky decision-card--nomatch">
+        <div className="decision-card__topline">
+          <span>今日胃部判决单</span>
+          <span className="verdict-pill tone-risky">{copy.verdict}</span>
+        </div>
+        <h2>{copy.title}</h2>
+        <div className="decision-food-name decision-food-name--nomatch">—</div>
+
+        <div className="card-label">为什么判不出来</div>
+        <p className="decision-reason">{copy.reason}</p>
+
+        <div className="decision-risk">
+          <ShieldAlert size={17} />
+          <span>{copy.risk}</span>
+        </div>
+
+        <div className="punchline">
+          <MessageCircle size={17} />
+          <span>{copy.punchline}</span>
+        </div>
+
+        {devMode && (
+          <div className="recommend-debug">
+            <button
+              type="button"
+              className="debug-toggle"
+              aria-expanded={showDebug}
+              onClick={() => setShowDebug((value) => !value)}
+            >
+              {showDebug ? '收起诊断信息' : '展开诊断信息'}
+            </button>
+            {showDebug && (
+              <div className="debug-panel">
+                {recommendation.scoredFoods.slice(0, 8).map((item, index) => (
+                  <div className="debug-item" key={item.food.id}>
+                    <div className="debug-item__head">
+                      <b>
+                        {index + 1}. {item.food.name}
+                      </b>
+                      <span>{item.score} 分</span>
+                    </div>
+                    <div className="debug-meta">
+                      {mealRoleLabels[item.food.mealRole]} · 饱腹 {item.food.satiety}/5 · 约 {item.food.estimatedPrice} 元
+                    </div>
+                    <p>reasons: {item.reasons.length ? item.reasons.join('、') : '-'}</p>
+                    <p>warnings: {item.warnings.length ? item.warnings.join('、') : '-'}</p>
+                    <p>hardBlocked: {String(item.hardBlocked)}</p>
+                    <p>
+                      hardBlockReasons:{' '}
+                      {item.hardBlockReasons.length ? item.hardBlockReasons.join('、') : '-'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </article>
+    );
+  }
+
+  // ---- normal recommendation ----
   return (
     <article
       className={`decision-card anim-pop decision-card--tone-${copy.verdictTone} ${
@@ -71,9 +138,9 @@ export function DecisionCard({
         <span className={`verdict-pill tone-${copy.verdictTone}`}>{copy.verdict}</span>
       </div>
       <h2>{copy.title}</h2>
-      <div className="decision-food-name">{food.name}</div>
+      <div className="decision-food-name">{food!.name}</div>
 
-      {(recommendation.plan.drink || recommendation.plan.addon) && (
+      {recommendation.plan && (recommendation.plan.drink || recommendation.plan.addon) && (
         <div className="meal-plan-breakdown">
           <div className="meal-plan-row meal-plan-row--main">
             <span className="meal-plan-label">主食</span>
@@ -105,19 +172,19 @@ export function DecisionCard({
       <div className="meta-strip">
         <span>
           <CircleDollarSign size={15} />
-          约 {food.estimatedPrice} 元
+          约 {food!.estimatedPrice} 元
         </span>
         <span>
           <MapPin size={15} />
-          {foodDistanceLabels[food.distance]}
+          {foodDistanceLabels[food!.distance]}
         </span>
         <span>
           <BadgeCheck size={15} />
-          {mealRoleLabels[food.mealRole]} · 饱腹 {food.satiety}/5
+          {mealRoleLabels[food!.mealRole]} · 饱腹 {food!.satiety}/5
         </span>
         <span>
           <BadgeCheck size={15} />
-          稳定性 {stabilityText(food.stability)}
+          稳定性 {stabilityText(food!.stability)}
         </span>
       </div>
 

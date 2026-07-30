@@ -212,6 +212,16 @@
   font-size: 17px;
 }
 
+.decision-food-name--nomatch {
+  color: var(--text-mute);
+  font-size: 28px;
+  font-style: italic;
+}
+
+.decision-card--nomatch {
+  border-color: color-mix(in srgb, var(--tomato) 18%, var(--border));
+}
+
 .decision-food-name {
   margin-bottom: 14px;
   color: var(--text);
