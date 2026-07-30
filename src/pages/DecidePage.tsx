@@ -75,7 +75,6 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   }, []);
 
   const canDecide = foods.length > 0;
-  const isNoMatch = recommendation?.status === 'noMatch';
   const isLogged = Boolean(submittedFeedback) || pickedNoRating;
   const cleanSelectedMoods = useMemo(() => stripRelationshipMoods(selectedMoods), [selectedMoods]);
   const cleanPartnerMoods = useMemo(() => stripRelationshipMoods(partnerMoods), [partnerMoods]);
@@ -112,23 +111,25 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   };
 
   const createSkipEntry = (): DecisionHistory | undefined => {
-    if (!recommendation || isLogged || isNoMatch || !recommendation.plan) return undefined;
+    if (!recommendation || isLogged || recommendation.status === 'noMatch') return undefined;
+    // After narrowing, plan is guaranteed present
+    const { plan } = recommendation;
 
     return {
       id: makeId('history'),
-      foodId: recommendation.plan.main.id,
-      foodName: recommendation.plan.main.name,
+      foodId: plan.main.id,
+      foodName: plan.main.name,
       selectedMoods: activeInput.selectedMoods,
       partnerMoods: activeInput.partnerMoods,
       budget: activeInput.budget,
       distance: activeInput.distance,
       feedback: 'skipped',
       createdAt: Date.now(),
-      drinkId: recommendation.plan.drink?.id,
-      drinkName: recommendation.plan.drink?.name,
-      addonId: recommendation.plan.addon?.id,
-      addonName: recommendation.plan.addon?.name,
-      totalPrice: recommendation.plan.totalPrice,
+      drinkId: plan.drink?.id,
+      drinkName: plan.drink?.name,
+      addonId: plan.addon?.id,
+      addonName: plan.addon?.name,
+      totalPrice: plan.totalPrice,
     };
   };
 
@@ -185,7 +186,8 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   };
 
   const baseEntry = (): DecisionHistory => {
-    const plan = recommendation!.plan!;
+    // Called only when recommendation is known to be success/degraded
+    const { plan } = recommendation as Extract<Recommendation, { status: 'success' | 'degraded' }>;
     return {
       id: makeId('history'),
       foodId: plan.main.id,
@@ -204,14 +206,14 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   };
 
   const handleFeedback = (feedback: Feedback) => {
-    if (!recommendation || isLogged || isNoMatch) return;
+    if (!recommendation || isLogged || recommendation.status === 'noMatch') return;
     setSubmittedFeedback(feedback);
     buzz(12);
     onAddHistory({ ...baseEntry(), feedback });
   };
 
   const handlePick = () => {
-    if (!recommendation || isLogged || isNoMatch) return;
+    if (!recommendation || isLogged || recommendation.status === 'noMatch') return;
     setPickedNoRating(true);
     buzz(12);
     onAddHistory({ ...baseEntry(), feedback: undefined });

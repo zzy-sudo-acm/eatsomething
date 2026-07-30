@@ -13,30 +13,32 @@ import { detectMealPeriod, getBudgetLimit, resolveMealIntent } from './normalize
 import { scoreMainFood } from './scoreMain';
 
 // =====================================================================
-// Legal degradation rules
+// Legal degradation helpers
 // =====================================================================
 
 /**
- * Try to degrade fullMeal to lightMeal when no main exists.
- * Re-evaluates eligibility with relaxed mealRole constraint.
+ * Re-evaluate foods with relaxed mealRole (lightMeal allowed for fullMeal),
+ * returning a ScoredFood pool suitable for selectMain.
  */
 const tryDegradeFullMealToLightMeal = (
   foods: FoodItem[],
   input: DecisionInput,
   moods: string[],
   budgetLimit: number,
-  rng: () => number
+  /** Optional: additional budget constraint (for drink reservation). */
+  extraBudgetLimit: number = Infinity,
+  rng: () => number = Math.random
 ): ScoredFood | null => {
   const candidates = foods
     .filter((food) => {
-      // Only consider lightMeal foods (or main, already covered by normal path)
       if (food.mealRole !== 'lightMeal') return false;
-      const degElig = isEligibleAsMainDegraded(food, 'fullMeal', input, moods, budgetLimit);
+      const effectiveLimit = Math.min(budgetLimit, extraBudgetLimit);
+      const degElig = isEligibleAsMainDegraded(food, 'fullMeal', input, moods, effectiveLimit);
       return degElig.eligible;
     })
     .map((food) => ({
       food,
-      score: 1, // low baseline — they're fallbacks
+      score: 1,
       reasons: ['退化为轻食'],
       warnings: [] as string[],
       hardBlocked: false,
@@ -45,41 +47,13 @@ const tryDegradeFullMealToLightMeal = (
     .sort((a, b) => b.score - a.score);
 
   if (!candidates.length) return null;
-  return selectMain(candidates, moods, rng);
-};
-
-/**
- * Try to degrade drink intent to lightMeal/addon when no drinks exist in catalog.
- * Already handled by hasDrinkInCatalog flag, but if drinks exist yet all are blocked
- * (e.g. over-budget), try light fallback.
- */
-const tryDegradeDrinkToLight = (
-  scoredMains: ScoredFood[],
-  moods: string[],
-  rng: () => number
-): ScoredFood | null => {
-  const candidates = scoredMains.filter(
-    (item) =>
-      !item.hardBlocked &&
-      (item.food.mealRole === 'lightMeal' || item.food.mealRole === 'addon')
-  );
-  if (!candidates.length) return null;
-  return selectMain(candidates, moods, rng);
+  return selectMain(candidates, moods, rng, extraBudgetLimit);
 };
 
 // =====================================================================
 // Main entry point
 // =====================================================================
 
-/**
- * Main entry point: recommend a meal plan.
- *
- * @param foods   - full food catalogue
- * @param history - decision history (for feedback / skip / recency)
- * @param input   - user's decision input
- * @param rng     - injectable random function (default Math.random)
- * @param now     - injectable "current time" (default new Date())
- */
 export const recommendFood = (
   foods: FoodItem[],
   history: DecisionHistory[],
@@ -97,120 +71,238 @@ export const recommendFood = (
   const budgetLimit = getBudgetLimit(input.budget);
   const hasDrinkInCatalog = catalogHasDrink(foods, budgetLimit, allMoods);
 
-  // ---- Phase 1: Score all main-eligible foods ----
   const scoredMains = foods
     .map<ScoredFood>((food) =>
       scoreMainFood(food, input, allMoods, period, intent, history, nowMs, hasDrinkInCatalog)
     )
     .sort((a, b) => b.score - a.score);
 
-  // ---- Phase 2: Select main + build plan ----
-  let status: Recommendation['status'] = 'success';
-  let plan: Recommendation['plan'] | undefined;
-  let pickedMain: ScoredFood | null = null;
-  let drinkCandidate: ScoredFood | null = null;
-  let addonCandidate: ScoredFood | null = null;
-  let degraded = false;
-  let degradeReason: string | undefined;
-
-  // --- Drink-priority mode (Fix 3 from previous round) ---
+  // ---- Drink-priority path (milkTea / wantDrink + non-drink intent) ----
   if (hasDrinkMood(allMoods) && intent !== 'drink') {
-    const result = buildMealPlanWithDrinkPriority(scoredMains, foods, input, allMoods, rng);
-    if (result) {
-      plan = result.plan;
-      pickedMain = result.main;
-      drinkCandidate = result.drinkCandidate;
-      addonCandidate = result.addonCandidate;
-      if (!result.drinkIncluded) {
-        degraded = true;
-        const drinkMood = allMoods.includes('milkTea') ? '奶茶' : '饮料';
-        degradeReason = `预算内无法同时容纳正餐和${drinkMood}`;
+    return handleDrinkPriorityPath(scoredMains, foods, input, allMoods, budgetLimit, intent, history, rng);
+  }
+
+  // ---- Standard path ----
+  return handleStandardPath(scoredMains, foods, input, allMoods, budgetLimit, intent, period, history, rng);
+};
+
+// =====================================================================
+// Drink-priority path
+// =====================================================================
+
+const handleDrinkPriorityPath = (
+  scoredMains: ScoredFood[],
+  foods: FoodItem[],
+  input: DecisionInput,
+  allMoods: string[],
+  budgetLimit: number,
+  intent: MealIntent,
+  history: DecisionHistory[],
+  rng: () => number
+): Recommendation => {
+  // Attempt 1: find compatible main + drink
+  const result = buildMealPlanWithDrinkPriority(scoredMains, foods, input, allMoods, rng);
+  if (result) {
+    return buildSuccessOrDegraded(
+      result.plan,
+      result.main,
+      result.drinkCandidate,
+      result.addonCandidate,
+      scoredMains,
+      input,
+      allMoods,
+      history,
+      intent,
+      !result.drinkIncluded,
+      result.drinkIncluded ? undefined : `预算内无法同时容纳正餐和${allMoods.includes('milkTea') ? '奶茶' : '饮料'}`,
+      rng
+    );
+  }
+
+  // Attempt 2 (Fix 2): degrade fullMeal to lightMeal, still keeping the drink
+  if (intent === 'fullMeal') {
+    const targetDrink = findTargetDrinkForPriority(foods, budgetLimit, allMoods);
+    if (targetDrink) {
+      const mainBudget = budgetLimit - targetDrink.estimatedPrice;
+      const degradedPick = tryDegradeFullMealToLightMeal(foods, input, allMoods, budgetLimit, mainBudget, rng);
+      if (degradedPick) {
+        const result2 = buildMealPlan(degradedPick, foods, input, allMoods, rng);
+        // Force the reserved drink into the plan
+        const planWithDrink = {
+          main: degradedPick.food,
+          drink: targetDrink,
+          totalPrice: degradedPick.food.estimatedPrice + targetDrink.estimatedPrice,
+          reasons: ['当前没有合适正餐，已退化为轻食并保留你想喝的饮料'],
+        };
+        return buildSuccessOrDegraded(
+          planWithDrink,
+          degradedPick,
+          { food: targetDrink, score: 100, reasons: ['预留预算'], warnings: [], hardBlocked: false, hardBlockReasons: [] },
+          result2.addonCandidate,
+          scoredMains,
+          input,
+          allMoods,
+          history,
+          intent,
+          true,
+          '当前没有合适正餐，已退化为轻食并保留你想喝的饮料',
+          rng
+        );
       }
-    } else {
-      // Drink-priority mode found no legal main → noMatch
-      status = 'noMatch';
-      degraded = true;
-      degradeReason = buildNoMatchReason(intent, scoredMains, budgetLimit, allMoods);
     }
-  } else {
-    // --- Standard mode ---
-    // --- Standard mode ---
-    const mainPick = selectMain(scoredMains, allMoods, rng);
 
-    if (mainPick) {
-      // Happy path: selectMain returned a legal candidate
-      pickedMain = mainPick;
-      const result = buildMealPlan(pickedMain, foods, input, allMoods, rng);
-      plan = result.plan;
-      drinkCandidate = result.drinkCandidate;
-      addonCandidate = result.addonCandidate;
-
-      // Drink intent with no drinks in catalog → degraded but legal
-      if (intent === 'drink' && !hasDrinkInCatalog) {
-        degraded = true;
-        degradeReason = '菜品库中没有可用饮料，已退化为轻食或加餐';
-      }
-
-      // Starving with lightMeal → warn
-      if (allMoods.includes('starving') && pickedMain.food.mealRole === 'lightMeal' && pickedMain.food.satiety <= 3) {
-        degraded = true;
-        degradeReason = '饿疯了但没有合适正餐，只能先垫一下';
-      }
-    } else {
-      // No legal candidate from selectMain — try legal degradation
-      if (intent === 'fullMeal') {
-        // Degrade: fullMeal → lightMeal (re-evaluated with relaxed eligibility)
-        const degradedPick = tryDegradeFullMealToLightMeal(foods, input, allMoods, budgetLimit, rng);
-        if (degradedPick) {
-          pickedMain = degradedPick;
-          degraded = true;
-          degradeReason = '当前没有合适正餐，退化为轻食';
-          const result = buildMealPlan(pickedMain, foods, input, allMoods, rng);
-          plan = result.plan;
-          drinkCandidate = result.drinkCandidate;
-          addonCandidate = result.addonCandidate;
-        }
-      } else if (intent === 'drink' && hasDrinkInCatalog) {
-        // Drinks exist but all are blocked → try light fallback
-        const degradedPick = tryDegradeDrinkToLight(scoredMains, allMoods, rng);
-        if (degradedPick) {
-          pickedMain = degradedPick;
-          degraded = true;
-          degradeReason = '可用饮料不满足当前条件，退化为轻食或加餐';
-          const result = buildMealPlan(pickedMain, foods, input, allMoods, rng);
-          plan = result.plan;
-          drinkCandidate = result.drinkCandidate;
-          addonCandidate = result.addonCandidate;
-        }
-      } else if (intent === 'drink' && !hasDrinkInCatalog) {
-        // No drinks at all — already handled in scoring by allowing lightMeal/addon
-        // selectMain should have picked from them; if still null, truly noMatch
-      }
-      // lightMeal intent: selectMain already includes addon/lightMeal in pool
-      // If it returned null, there's truly nothing.
-
-      // If still no pick after all degradation attempts → noMatch
-      if (!pickedMain) {
-        status = 'noMatch';
-        degraded = true;
-        degradeReason = buildNoMatchReason(intent, scoredMains, budgetLimit, allMoods);
-      }
+    // Attempt 3: give up on the drink, try lightMeal alone
+    const degradedPick2 = tryDegradeFullMealToLightMeal(foods, input, allMoods, budgetLimit, Infinity, rng);
+    if (degradedPick2) {
+      const result3 = buildMealPlan(degradedPick2, foods, input, allMoods, rng);
+      return buildSuccessOrDegraded(
+        result3.plan,
+        degradedPick2,
+        result3.drinkCandidate,
+        result3.addonCandidate,
+        scoredMains,
+        input,
+        allMoods,
+        history,
+        intent,
+        true,
+        '预算内放不下饮料，退化为轻食',
+        rng
+      );
     }
   }
 
-  // ---- Phase 3: Build alternatives ----
-  const alternativePlans: Recommendation['alternatives'] =
-    status === 'noMatch' || !pickedMain
-      ? []
-      : buildAlternatives(pickedMain, scoredMains, input, allMoods);
+  // All attempts failed → noMatch
+  return buildNoMatchResult(scoredMains, intent, budgetLimit, allMoods);
+};
 
-  // ---- Phase 4: Build copy ----
-  const copy =
-    status === 'noMatch'
-      ? buildNoMatchCopy(intent, scoredMains, budgetLimit, allMoods, degradeReason ?? '')
-      : buildCopy(pickedMain!, plan!, input, alternativePlans, history, intent, degraded, degradeReason);
+/** Find the best target drink within budget for drink-priority mode. */
+const findTargetDrinkForPriority = (
+  foods: FoodItem[],
+  budgetLimit: number,
+  moods: string[]
+): FoodItem | null => {
+  const candidates = foods
+    .filter((food) => food.mealRole === 'drink' && food.estimatedPrice <= budgetLimit)
+    .filter((food) => !(moods.includes('noSpicy') && food.spicy));
 
-  // ---- Phase 5: Finalize scoredFoods for debug ----
+  if (!candidates.length) return null;
+
+  if (moods.includes('milkTea')) {
+    const milkTea = candidates.find((f) => f.tags.includes('milkTea'));
+    if (milkTea) return milkTea;
+  }
+  if (moods.includes('wantDrink')) {
+    const want = candidates.find((f) => f.tags.includes('wantDrink'));
+    if (want) return want;
+  }
+  candidates.sort((a, b) => a.estimatedPrice - b.estimatedPrice);
+  return candidates[0];
+};
+
+// =====================================================================
+// Standard path
+// =====================================================================
+
+const handleStandardPath = (
+  scoredMains: ScoredFood[],
+  foods: FoodItem[],
+  input: DecisionInput,
+  allMoods: string[],
+  budgetLimit: number,
+  intent: MealIntent,
+  period: ReturnType<typeof detectMealPeriod>,
+  history: DecisionHistory[],
+  rng: () => number
+): Recommendation => {
+  const mainPick = selectMain(scoredMains, allMoods, rng);
+
+  if (mainPick) {
+    const result = buildMealPlan(mainPick, foods, input, allMoods, rng);
+    let degraded = false;
+    let degradeReason: string | undefined;
+
+    if (intent === 'drink' && !catalogHasDrink(foods, budgetLimit, allMoods)) {
+      degraded = true;
+      degradeReason = '菜品库中没有可用饮料，已退化为轻食或加餐';
+    }
+
+    return buildSuccessOrDegraded(
+      result.plan,
+      mainPick,
+      result.drinkCandidate,
+      result.addonCandidate,
+      scoredMains,
+      input,
+      allMoods,
+      history,
+      intent,
+      degraded,
+      degradeReason,
+      rng
+    );
+  }
+
+  // No legal candidate — try degradation
+  let degradedPick: ScoredFood | null = null;
+  let degradeReason: string | undefined;
+
+  if (intent === 'fullMeal') {
+    degradedPick = tryDegradeFullMealToLightMeal(foods, input, allMoods, budgetLimit, Infinity, rng);
+    if (degradedPick) {
+      degradeReason = '当前没有合适正餐，退化为轻食';
+    }
+  } else if (intent === 'drink' && catalogHasDrink(foods, budgetLimit, allMoods)) {
+    // Drinks exist but all blocked — try light fallback
+    const candidates = scoredMains.filter(
+      (item) => !item.hardBlocked && (item.food.mealRole === 'lightMeal' || item.food.mealRole === 'addon')
+    );
+    degradedPick = candidates.length ? selectMain(candidates, allMoods, rng) : null;
+    if (degradedPick) degradeReason = '可用饮料不满足当前条件，退化为轻食或加餐';
+  }
+
+  if (degradedPick) {
+    const result = buildMealPlan(degradedPick, foods, input, allMoods, rng);
+    return buildSuccessOrDegraded(
+      result.plan,
+      degradedPick,
+      result.drinkCandidate,
+      result.addonCandidate,
+      scoredMains,
+      input,
+      allMoods,
+      history,
+      intent,
+      true,
+      degradeReason,
+      rng
+    );
+  }
+
+  return buildNoMatchResult(scoredMains, intent, budgetLimit, allMoods);
+};
+
+// =====================================================================
+// Result builders (construct discriminated-union return types)
+// =====================================================================
+
+const buildSuccessOrDegraded = (
+  plan: Recommendation['plan'] & {},
+  pickedMain: ScoredFood,
+  drinkCandidate: ScoredFood | null,
+  addonCandidate: ScoredFood | null,
+  scoredMains: ScoredFood[],
+  input: DecisionInput,
+  allMoods: string[],
+  history: DecisionHistory[],
+  intent: MealIntent,
+  degraded: boolean,
+  degradeReason: string | undefined,
+  rng: () => number
+): Extract<Recommendation, { status: 'success' | 'degraded' }> => {
+  const alternatives = buildAlternatives(pickedMain, scoredMains, input, allMoods);
+  const copy = buildCopy(pickedMain, plan, input, alternatives, history, intent, degraded, degradeReason);
+
   const scoredFoods = scoredMains.map((item) => {
     if (drinkCandidate && item.food.id === drinkCandidate.food.id) {
       return { ...item, reasons: [...item.reasons, '→ 选为搭配饮料'], score: Math.max(item.score, 1) };
@@ -221,29 +313,36 @@ export const recommendFood = (
     return item;
   });
 
-  if (status === 'noMatch') {
-    return {
-      status: 'noMatch',
-      plan: undefined,
-      alternatives: [],
-      food: undefined,
-      score: undefined,
-      scoredFoods,
-      copy,
-      degraded,
-      degradeReason,
-    };
-  }
-
   return {
     status: degraded ? 'degraded' : 'success',
-    plan: plan!,
-    alternatives: alternativePlans,
-    food: plan!.main,
-    score: pickedMain!.score,
-    scoredFoods,
+    plan,
+    food: plan.main,
+    score: pickedMain.score,
+    alternatives,
     copy,
+    scoredFoods,
     degraded,
+    degradeReason,
+  };
+};
+
+const buildNoMatchResult = (
+  scoredMains: ScoredFood[],
+  intent: MealIntent,
+  budgetLimit: number,
+  allMoods: string[]
+): Extract<Recommendation, { status: 'noMatch' }> => {
+  const degradeReason = buildNoMatchReason(intent, scoredMains, budgetLimit, allMoods);
+  const copy = buildNoMatchCopy(intent, scoredMains, budgetLimit, allMoods, degradeReason);
+
+  const scoredFoods = scoredMains.map((item) => item);
+
+  return {
+    status: 'noMatch',
+    alternatives: [],
+    copy,
+    scoredFoods,
+    degraded: true as const,
     degradeReason,
   };
 };
@@ -259,9 +358,8 @@ const buildNoMatchReason = (
   moods: string[]
 ): string => {
   const withinBudget = scoredMains.filter((item) => item.food.estimatedPrice <= budgetLimit);
-  const allOverBudget = withinBudget.length === 0;
 
-  if (allOverBudget) {
+  if (withinBudget.length === 0) {
     return `所有食物均超出预算上限(${budgetLimit}元)`;
   }
 
@@ -295,7 +393,7 @@ const buildNoMatchReason = (
 
 // Re-export sub-modules for testing / inspection
 export { detectMealPeriod, resolveMealIntent, getBudgetLimit, wantsUpscale } from './normalizeInput';
-export { isEligibleAsMain, isEligibleAsDrink, isEligibleAsAddon, getHardBlockReasons, hasDrinkMood, catalogHasDrink } from './eligibility';
+export { isEligibleAsMain, isEligibleAsDrink, isEligibleAsAddon, getHardBlockReasons, hasDrinkMood, catalogHasDrink, isEligibleAsMainDegraded } from './eligibility';
 export { scoreMainFood } from './scoreMain';
 export { scoreDrinkOption, scoreAddonOption, shouldConsiderDrink, shouldConsiderAddon } from './scoreAddon';
 export { buildMealPlan, buildAlternatives, selectMain } from './buildPlan';

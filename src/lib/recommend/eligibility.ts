@@ -58,13 +58,19 @@ export const isEligibleAsMain = (
     return { eligible: false, reason: '明确不想吃辣' };
   }
 
-  // Starving needs satiety
-  if (moods.includes('starving') && food.satiety <= 1) {
-    return { eligible: false, reason: '饿疯了需要顶饱' };
+  // Starving: lightMeal or addon with satiety <= 2 cannot substitute a real meal
+  if (moods.includes('starving') && food.mealRole !== 'main' && food.satiety <= 2) {
+    return { eligible: false, reason: '饿疯了，轻食或加餐不够顶' };
   }
 
   if (intent === 'fullMeal') {
-    if (food.mealRole === 'main') return { eligible: true };
+    if (food.mealRole === 'main') {
+      // Starving requires adequate satiety even for mains
+      if (moods.includes('starving') && food.satiety <= 2) {
+        return { eligible: false, reason: '饿疯了，这个不够顶饱' };
+      }
+      return { eligible: true };
+    }
     if (food.mealRole === 'lightMeal') {
       if (moods.includes('eatLight')) return { eligible: true };
       // Tight budget fallback: under10 may have no true mains

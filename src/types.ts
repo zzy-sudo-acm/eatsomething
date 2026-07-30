@@ -93,21 +93,32 @@ export interface DecisionCopy {
   alternatives: string[];
 }
 
-export interface Recommendation {
-  /** Outcome status: success, degraded fallback, or no legal candidate. */
-  status: RecommendationStatus;
-  /** The full meal plan. Present when status !== 'noMatch'. */
-  plan?: MealPlan;
-  /** Alternative meal plans (up to 2). Empty for noMatch. */
-  alternatives: MealPlan[];
-  /** Legacy compat: points to plan.main. Present when status !== 'noMatch'. */
-  food?: FoodItem;
-  /** Main-food score. Present when status !== 'noMatch'. */
-  score?: number;
-  copy: DecisionCopy;
-  scoredFoods: ScoredFood[];
-  /** True when recommendation is not an ideal match. */
-  degraded: boolean;
-  /** Human-readable note explaining the fallback. */
-  degradeReason?: string;
-}
+/**
+ * Discriminated union: after checking status, TypeScript narrows fields automatically.
+ *
+ *   status === 'noMatch' → plan/food/score are absent
+ *   status !== 'noMatch' → plan/food/score are guaranteed present
+ */
+export type Recommendation =
+  | {
+      status: 'success' | 'degraded';
+      plan: MealPlan;
+      food: FoodItem;
+      score: number;
+      alternatives: MealPlan[];
+      copy: DecisionCopy;
+      scoredFoods: ScoredFood[];
+      degraded: boolean;
+      degradeReason?: string;
+    }
+  | {
+      status: 'noMatch';
+      plan?: never;
+      food?: never;
+      score?: never;
+      alternatives: MealPlan[];
+      copy: DecisionCopy;
+      scoredFoods: ScoredFood[];
+      degraded: true;
+      degradeReason?: string;
+    };

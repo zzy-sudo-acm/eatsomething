@@ -42,28 +42,25 @@ export function DecisionCard({
   onPick,
 }: DecisionCardProps) {
   const { copy } = recommendation;
-  const isNoMatch = recommendation.status === 'noMatch';
-  const food = recommendation.food;
-  const isCouple = copy.title.includes('你俩') || copy.punchline.includes('你俩');
   const [showDebug, setShowDebug] = useState(false);
   const [confirmLine, setConfirmLine] = useState('');
   const locked = Boolean(submittedFeedback) || picked;
   const visibleConfirmLine = locked ? confirmLine : '';
 
   const handleFeedbackClick = (feedback: VisibleFeedback) => {
-    if (locked || isNoMatch) return;
+    if (locked || recommendation.status === 'noMatch') return;
     setConfirmLine(pickRandomLine(confirmCopy[feedback]));
     onFeedback(feedback);
   };
 
   const handlePickClick = () => {
-    if (locked || isNoMatch) return;
+    if (locked || recommendation.status === 'noMatch') return;
     setConfirmLine(pickRandomLine(pickConfirm));
     onPick();
   };
 
-  // ---- noMatch: show a suggestion card instead of a food recommendation ----
-  if (isNoMatch) {
+  // Discriminated union: early return for noMatch narrows the rest to success/degraded
+  if (recommendation.status === 'noMatch') {
     return (
       <article className="decision-card anim-pop decision-card--tone-risky decision-card--nomatch">
         <div className="decision-card__topline">
@@ -72,61 +69,26 @@ export function DecisionCard({
         </div>
         <h2>{copy.title}</h2>
         <div className="decision-food-name decision-food-name--nomatch">—</div>
-
         <div className="card-label">为什么判不出来</div>
         <p className="decision-reason">{copy.reason}</p>
-
         <div className="decision-risk">
           <ShieldAlert size={17} />
           <span>{copy.risk}</span>
         </div>
-
         <div className="punchline">
           <MessageCircle size={17} />
           <span>{copy.punchline}</span>
         </div>
-
-        {devMode && (
-          <div className="recommend-debug">
-            <button
-              type="button"
-              className="debug-toggle"
-              aria-expanded={showDebug}
-              onClick={() => setShowDebug((value) => !value)}
-            >
-              {showDebug ? '收起诊断信息' : '展开诊断信息'}
-            </button>
-            {showDebug && (
-              <div className="debug-panel">
-                {recommendation.scoredFoods.slice(0, 8).map((item, index) => (
-                  <div className="debug-item" key={item.food.id}>
-                    <div className="debug-item__head">
-                      <b>
-                        {index + 1}. {item.food.name}
-                      </b>
-                      <span>{item.score} 分</span>
-                    </div>
-                    <div className="debug-meta">
-                      {mealRoleLabels[item.food.mealRole]} · 饱腹 {item.food.satiety}/5 · 约 {item.food.estimatedPrice} 元
-                    </div>
-                    <p>reasons: {item.reasons.length ? item.reasons.join('、') : '-'}</p>
-                    <p>warnings: {item.warnings.length ? item.warnings.join('、') : '-'}</p>
-                    <p>hardBlocked: {String(item.hardBlocked)}</p>
-                    <p>
-                      hardBlockReasons:{' '}
-                      {item.hardBlockReasons.length ? item.hardBlockReasons.join('、') : '-'}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {devMode && renderDebug(recommendation.scoredFoods, showDebug, setShowDebug)}
       </article>
     );
   }
 
-  // ---- normal recommendation ----
+  // TypeScript now knows: recommendation.status is 'success' | 'degraded'
+  // plan, food, score are guaranteed present
+  const { plan, food, score } = recommendation;
+  const isCouple = copy.title.includes('你俩') || copy.punchline.includes('你俩');
+
   return (
     <article
       className={`decision-card anim-pop decision-card--tone-${copy.verdictTone} ${
@@ -138,33 +100,33 @@ export function DecisionCard({
         <span className={`verdict-pill tone-${copy.verdictTone}`}>{copy.verdict}</span>
       </div>
       <h2>{copy.title}</h2>
-      <div className="decision-food-name">{food!.name}</div>
+      <div className="decision-food-name">{food.name}</div>
 
-      {recommendation.plan && (recommendation.plan.drink || recommendation.plan.addon) && (
+      {(plan.drink || plan.addon) && (
         <div className="meal-plan-breakdown">
           <div className="meal-plan-row meal-plan-row--main">
             <span className="meal-plan-label">主食</span>
-            <span className="meal-plan-name">{recommendation.plan.main.name}</span>
-            <span className="meal-plan-price">{recommendation.plan.main.estimatedPrice} 元</span>
+            <span className="meal-plan-name">{plan.main.name}</span>
+            <span className="meal-plan-price">{plan.main.estimatedPrice} 元</span>
           </div>
-          {recommendation.plan.drink && (
+          {plan.drink && (
             <div className="meal-plan-row meal-plan-row--drink">
               <span className="meal-plan-label">搭配</span>
-              <span className="meal-plan-name">{recommendation.plan.drink.name}</span>
-              <span className="meal-plan-price">{recommendation.plan.drink.estimatedPrice} 元</span>
+              <span className="meal-plan-name">{plan.drink.name}</span>
+              <span className="meal-plan-price">{plan.drink.estimatedPrice} 元</span>
             </div>
           )}
-          {recommendation.plan.addon && (
+          {plan.addon && (
             <div className="meal-plan-row meal-plan-row--addon">
               <span className="meal-plan-label">加餐</span>
-              <span className="meal-plan-name">{recommendation.plan.addon.name}</span>
-              <span className="meal-plan-price">{recommendation.plan.addon.estimatedPrice} 元</span>
+              <span className="meal-plan-name">{plan.addon.name}</span>
+              <span className="meal-plan-price">{plan.addon.estimatedPrice} 元</span>
             </div>
           )}
           <div className="meal-plan-divider" />
           <div className="meal-plan-row meal-plan-row--total">
             <span className="meal-plan-label">预计总价</span>
-            <span className="meal-plan-total-price">{recommendation.plan.totalPrice} 元</span>
+            <span className="meal-plan-total-price">{plan.totalPrice} 元</span>
           </div>
         </div>
       )}
@@ -172,19 +134,19 @@ export function DecisionCard({
       <div className="meta-strip">
         <span>
           <CircleDollarSign size={15} />
-          约 {food!.estimatedPrice} 元
+          约 {food.estimatedPrice} 元
         </span>
         <span>
           <MapPin size={15} />
-          {foodDistanceLabels[food!.distance]}
+          {foodDistanceLabels[food.distance]}
         </span>
         <span>
           <BadgeCheck size={15} />
-          {mealRoleLabels[food!.mealRole]} · 饱腹 {food!.satiety}/5
+          {mealRoleLabels[food.mealRole]} · 饱腹 {food.satiety}/5
         </span>
         <span>
           <BadgeCheck size={15} />
-          稳定性 {stabilityText(food!.stability)}
+          稳定性 {stabilityText(food.stability)}
         </span>
       </div>
 
@@ -210,42 +172,7 @@ export function DecisionCard({
         <span>{copy.punchline}</span>
       </div>
 
-      {devMode && (
-      <div className="recommend-debug">
-        <button
-          type="button"
-          className="debug-toggle"
-          aria-expanded={showDebug}
-          onClick={() => setShowDebug((value) => !value)}
-        >
-          {showDebug ? '收起推荐依据' : '展开推荐依据'}
-        </button>
-        {showDebug && (
-          <div className="debug-panel">
-            {recommendation.scoredFoods.slice(0, 8).map((item, index) => (
-              <div className="debug-item" key={item.food.id}>
-                <div className="debug-item__head">
-                  <b>
-                    {index + 1}. {item.food.name}
-                  </b>
-                  <span>{item.score} 分</span>
-                </div>
-                <div className="debug-meta">
-                  {mealRoleLabels[item.food.mealRole]} · 饱腹 {item.food.satiety}/5 · 约 {item.food.estimatedPrice} 元
-                </div>
-                <p>reasons: {item.reasons.length ? item.reasons.join('、') : '-'}</p>
-                <p>warnings: {item.warnings.length ? item.warnings.join('、') : '-'}</p>
-                <p>hardBlocked: {String(item.hardBlocked)}</p>
-                <p>
-                  hardBlockReasons:{' '}
-                  {item.hardBlockReasons.length ? item.hardBlockReasons.join('、') : '-'}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      )}
+      {devMode && renderDebug(recommendation.scoredFoods, showDebug, setShowDebug)}
 
       <div className="feedback-block">
         {!locked && (
@@ -256,20 +183,59 @@ export function DecisionCard({
         )}
         <div className="feedback-label">{locked ? '已记录' : '或者吃完顺便打个分（可选）：'}</div>
         <div className="feedback-row" aria-label="反馈">
-          {feedbackOrder.map((feedback) => (
+          {feedbackOrder.map((fb) => (
             <button
-              key={feedback}
+              key={fb}
               type="button"
-              className={`feedback-button ${submittedFeedback === feedback ? 'is-active' : ''}`}
-              onClick={() => handleFeedbackClick(feedback)}
+              className={`feedback-button ${submittedFeedback === fb ? 'is-active' : ''}`}
+              onClick={() => handleFeedbackClick(fb)}
               disabled={locked}
             >
-              {feedbackLabels[feedback]}
+              {feedbackLabels[fb]}
             </button>
           ))}
         </div>
         {visibleConfirmLine && <div className="saved-tip">{visibleConfirmLine}</div>}
       </div>
     </article>
+  );
+}
+
+/** Shared debug panel for both branches. */
+function renderDebug(
+  scoredFoods: Recommendation['scoredFoods'],
+  showDebug: boolean,
+  setShowDebug: (v: boolean) => void
+) {
+  return (
+    <div className="recommend-debug">
+      <button
+        type="button"
+        className="debug-toggle"
+        aria-expanded={showDebug}
+        onClick={() => setShowDebug(!showDebug)}
+      >
+        {showDebug ? '收起推荐依据' : '展开推荐依据'}
+      </button>
+      {showDebug && (
+        <div className="debug-panel">
+          {scoredFoods.slice(0, 8).map((item, index) => (
+            <div className="debug-item" key={item.food.id}>
+              <div className="debug-item__head">
+                <b>{index + 1}. {item.food.name}</b>
+                <span>{item.score} 分</span>
+              </div>
+              <div className="debug-meta">
+                {mealRoleLabels[item.food.mealRole]} · 饱腹 {item.food.satiety}/5 · 约 {item.food.estimatedPrice} 元
+              </div>
+              <p>reasons: {item.reasons.length ? item.reasons.join('、') : '-'}</p>
+              <p>warnings: {item.warnings.length ? item.warnings.join('、') : '-'}</p>
+              <p>hardBlocked: {String(item.hardBlocked)}</p>
+              <p>hardBlockReasons: {item.hardBlockReasons.length ? item.hardBlockReasons.join('、') : '-'}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

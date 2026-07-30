@@ -1,4 +1,4 @@
-import { DecisionHistory, DecisionInput, FoodItem, Recommendation } from '../types';
+import { DecisionHistory, DecisionInput, FoodItem, MealPlan, Recommendation } from '../types';
 import { recommendFood } from './recommend';
 
 export interface RecommendationScenarioResult {
@@ -24,8 +24,7 @@ const baseInput: Pick<DecisionInput, 'partnerMoods' | 'distance' | 'coupleMode' 
   mealIntent: 'fullMeal',
 };
 
-// Fix 6: injectable time — use dinner time for "晚餐" scenarios
-const dinnerTime = new Date(2026, 6, 30, 19, 0); // 19:00 = dinner period
+const dinnerTime = new Date(2026, 6, 30, 19, 0);
 
 const withMockedRandom = <T>(value: number, task: () => T): T => {
   const originalRandom = Math.random;
@@ -47,11 +46,11 @@ const runSamples = (
     withMockedRandom(value, () => recommendFood(foods, history, input, Math.random, now))
   );
 
-/** Get all visible MAIN foods (main + alt mains). */
-const getVisibleMains = (r: Recommendation): FoodItem[] => [
-  r.plan!.main,
-  ...r.alternatives.map((a) => a.main),
-];
+/** Get all visible MAIN foods (plan.main only for success/degraded results). */
+const getVisibleMains = (r: Recommendation): FoodItem[] => {
+  if (r.status === 'noMatch') return [];
+  return [r.plan.main, ...r.alternatives.map((a) => a.main)];
+};
 
 const isDrink = (f: FoodItem) => f.mealRole === 'drink';
 const isAddonFood = (f: FoodItem) => f.mealRole === 'addon';
@@ -60,7 +59,19 @@ const isMilkTea = (f: FoodItem) =>
   f.name.includes('奶茶') || (f.mealRole === 'drink' && f.tags.includes('milkTea'));
 
 const summarize = (rs: Recommendation[]) =>
-  Array.from(new Set(rs.map((r) => r.plan!.main.name))).join('、') || '无';
+  Array.from(
+    new Set(
+      rs
+        .filter((r): r is Extract<Recommendation, { status: 'success' | 'degraded' }> => r.status !== 'noMatch')
+        .map((r) => r.plan.main.name)
+    )
+  ).join('、') || '无';
+
+/** Narrow a recommendation to success/degraded for safe plan access. */
+const asOk = (r: Recommendation): Extract<Recommendation, { status: 'success' | 'degraded' }> => {
+  if (r.status === 'noMatch') throw new Error('Unexpected noMatch in scenario');
+  return r;
+};
 
 const buildResult = (
   id: string,
@@ -91,9 +102,9 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       mealIntent: 'fullMeal',
     };
     const recs = runSamples(foods, input);
-    const badMain = recs.filter((r) => isDrink(r.plan!.main) || isAddonFood(r.plan!.main));
+    const badMain = recs.filter((r) => r.status !== 'noMatch' && (isDrink(r.plan.main) || isAddonFood(r.plan.main)));
     const badAlt = recs.filter((r) =>
-      r.alternatives.some((a) => isDrink(a.main) || isAddonFood(a.main))
+      r.status !== 'noMatch' && r.alternatives.some((a) => isDrink(a.main) || isAddonFood(a.main))
     );
     const allBad = new Set([...badMain, ...badAlt]);
     results.push(buildResult(
@@ -117,14 +128,11 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       mealIntent: 'fullMeal',
     };
     const recs = runSamples(foods, input);
-    // Main must not be drink (hard fail)
-    const drinkMain = recs.filter((r) => isDrink(r.plan!.main));
-    // If higher-occasion foods exist, occasionLevel=1 should be rare
+    const drinkMain = recs.filter((r) => r.status !== 'noMatch' && isDrink(r.plan.main));
     const hasHigher = foods.some((f) => f.mealRole === 'main' && f.occasionLevel >= 2 && f.estimatedPrice <= 50);
     const tooCasual = recs.filter(
-      (r) => r.plan!.main.occasionLevel <= 1 && r.plan!.main.mealRole === 'main'
+      (r) => r.status !== 'noMatch' && r.plan.main.occasionLevel <= 1 && r.plan.main.mealRole === 'main'
     );
-    // Fail if drinks appear, OR if too-casual dominates when better options exist
     const passed = drinkMain.length === 0 && !(hasHigher && tooCasual.length > recs.length * 0.6);
 
     results.push(buildResult(
@@ -150,8 +158,6 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       mealIntent: 'fullMeal',
     };
     const recs = runSamples(foods, input);
-
-    // Check if milkTea+main combo is possible in database
     const milkTeaInDb = foods.find(isMilkTea);
     const canCombo = milkTeaInDb
       ? foods.some(
@@ -162,18 +168,14 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
         )
       : false;
 
-    // Milk tea must NOT be the main
-    const milkTeaMain = recs.filter((r) => isMilkTea(r.plan!.main));
-    // Milk tea SHOULD be drink companion (if combo possible)
+    const milkTeaMain = recs.filter((r) => r.status !== 'noMatch' && isMilkTea(r.plan.main));
     const withMilkTea = recs.filter(
-      (r) => r.plan!.drink && isMilkTea(r.plan!.drink)
+      (r) => r.status !== 'noMatch' && r.plan.drink && isMilkTea(r.plan.drink)
     );
-    // Total must be within budget
-    const over = recs.filter((r) => r.plan!.totalPrice > 50);
+    const over = recs.filter((r) => r.status !== 'noMatch' && r.plan.totalPrice > 50);
 
     const passed =
       milkTeaMain.length === 0 && over.length === 0 &&
-      // If combo is possible, milk tea MUST appear as companion
       !(canCombo && withMilkTea.length === 0);
 
     results.push(buildResult(
@@ -205,7 +207,6 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
         '菜品库无预算内饮料，跳过'
       ));
     } else {
-      // Test with milkTea
       const input1: DecisionInput = {
         ...baseInput,
         selectedMoods: ['milkTea'],
@@ -213,10 +214,9 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
         mealIntent: 'drink',
       };
       const recs1 = runSamples(foods, input1);
-      const notDrink1 = recs1.filter((r) => !isDrink(r.plan!.main));
+      const notDrink1 = recs1.filter((r) => r.status !== 'noMatch' && !isDrink(r.plan.main));
       const passed1 = notDrink1.length === 0;
 
-      // Test without specific drink mood
       const input2: DecisionInput = {
         ...baseInput,
         selectedMoods: [],
@@ -224,7 +224,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
         mealIntent: 'drink',
       };
       const recs2 = runSamples(foods, input2);
-      const notDrink2 = recs2.filter((r) => !isDrink(r.plan!.main));
+      const notDrink2 = recs2.filter((r) => r.status !== 'noMatch' && !isDrink(r.plan.main));
       const passed2 = notDrink2.length === 0;
 
       const passed = passed1 && passed2;
@@ -252,12 +252,12 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
     };
     const recs = runSamples(foods, input);
 
-    // Main MUST NOT be drink or addon
     const badRole = recs.filter(
-      (r) => isDrink(r.plan!.main) || isAddonFood(r.plan!.main)
+      (r) => r.status !== 'noMatch' && (isDrink(r.plan.main) || isAddonFood(r.plan.main))
     );
-    // Main satiety must be >= 4 (or it's a fail)
-    const lowSatiety = recs.filter((r) => r.plan!.main.satiety < 4);
+    const lowSatiety = recs.filter(
+      (r) => r.status !== 'noMatch' && r.plan.main.satiety < 4
+    );
 
     const passed = badRole.length === 0 && lowSatiety.length === 0;
     results.push(buildResult(
@@ -268,12 +268,12 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
         ? `通过 样本: ${summarize(recs)}`
         : badRole.length > 0
           ? `饮料/addon成为主推荐: ${summarize(badRole)}`
-          : `饱腹<4: ${lowSatiety.map(r => `${r.plan!.main.name}(${r.plan!.main.satiety})`).join('、')}`
+          : `饱腹<4: ${lowSatiety.map(r => asOk(r).plan.main.name + '(' + asOk(r).plan.main.satiety + ')').join('、')}`
     ));
   }
 
   // =========================================================================
-  // Scenario 6: noSpicy → zero spicy anywhere (main, drink, addon, alt)
+  // Scenario 6: noSpicy → zero spicy anywhere
   // =========================================================================
   {
     const input: DecisionInput = {
@@ -283,11 +283,11 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
     };
     const recs = runSamples(foods, input);
 
-    const spicyMain = recs.filter((r) => isSpicy(r.plan!.main));
-    const spicyDrink = recs.filter((r) => r.plan!.drink && isSpicy(r.plan!.drink));
-    const spicyAddon = recs.filter((r) => r.plan!.addon && isSpicy(r.plan!.addon));
+    const spicyMain = recs.filter((r) => r.status !== 'noMatch' && isSpicy(r.plan.main));
+    const spicyDrink = recs.filter((r) => r.status !== 'noMatch' && r.plan.drink && isSpicy(r.plan.drink));
+    const spicyAddon = recs.filter((r) => r.status !== 'noMatch' && r.plan.addon && isSpicy(r.plan.addon));
     const spicyAlt = recs.filter((r) =>
-      r.alternatives.some((a) => isSpicy(a.main))
+      r.status !== 'noMatch' && r.alternatives.some((a) => isSpicy(a.main))
     );
 
     const passed =
@@ -318,39 +318,47 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
     const before = withMockedRandom(0.3, () =>
       recommendFood(foods, [], input, () => 0.3, dinnerTime)
     );
-    const skippedHistory: DecisionHistory[] = [
-      {
-        id: 'scenario-skip',
-        foodId: before.plan!.main.id,
-        foodName: before.plan!.main.name,
-        selectedMoods: input.selectedMoods,
-        budget: input.budget,
-        distance: input.distance,
-        feedback: 'skipped',
-        createdAt: now,
-      },
-    ];
-    const after = withMockedRandom(0.3, () =>
-      recommendFood(foods, skippedHistory, input, () => 0.3, dinnerTime)
-    );
-    const beforeScore =
-      before.scoredFoods.find((item) => item.food.id === before.plan!.main.id)?.score ?? 0;
-    const afterScore =
-      after.scoredFoods.find((item) => item.food.id === before.plan!.main.id)?.score ?? 0;
+    if (before.status === 'noMatch') {
+      results.push(buildResult(
+        'scenario-7-skip-penalty',
+        '场景7: skipped食物10分钟内明显降权',
+        false,
+        'before推荐返回了noMatch，无法测试skip'
+      ));
+    } else {
+      const skippedHistory: DecisionHistory[] = [
+        {
+          id: 'scenario-skip',
+          foodId: before.plan.main.id,
+          foodName: before.plan.main.name,
+          selectedMoods: input.selectedMoods,
+          budget: input.budget,
+          distance: input.distance,
+          feedback: 'skipped',
+          createdAt: now,
+        },
+      ];
+      const after = withMockedRandom(0.3, () =>
+        recommendFood(foods, skippedHistory, input, () => 0.3, dinnerTime)
+      );
+      const beforeScore =
+        before.scoredFoods.find((item) => item.food.id === before.plan.main.id)?.score ?? 0;
+      const afterScore =
+        after.status === 'noMatch' ? -999 : (after.scoredFoods.find((item) => item.food.id === before.plan.main.id)?.score ?? 0);
 
-    results.push(buildResult(
-      'scenario-7-skip-penalty',
-      '场景7: skipped食物10分钟内明显降权',
-      after.plan!.main.id !== before.plan!.main.id && afterScore <= beforeScore - 20,
-      `跳过 ${before.plan!.main.name}: ${beforeScore} → ${afterScore}; 跳过后=${after.plan!.main.name}`
-    ));
+      results.push(buildResult(
+        'scenario-7-skip-penalty',
+        '场景7: skipped食物10分钟内明显降权',
+        after.status !== 'noMatch' && after.plan.main.id !== before.plan.main.id && afterScore <= beforeScore - 20,
+        `跳过 ${before.plan.main.name}: ${beforeScore} → ${afterScore}; 跳过后=${after.status === 'noMatch' ? 'noMatch' : after.plan.main.name}`
+      ));
+    }
   }
 
   // =========================================================================
-  // Scenario 8: budget hard cap (with custom small catalogue)
+  // Scenario 8: budget hard cap
   // =========================================================================
   {
-    // Standard test on default foods
     const budgetLimits: Array<{ budget: DecisionInput['budget']; limit: number }> = [
       { budget: 'under10', limit: 10 },
       { budget: 'under20', limit: 20 },
@@ -358,65 +366,35 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
     ];
 
     for (const { budget, limit } of budgetLimits) {
-      const input: DecisionInput = {
-        ...baseInput,
-        selectedMoods: ['noIdea'],
-        budget,
-      };
+      const input: DecisionInput = { ...baseInput, selectedMoods: ['noIdea'], budget };
       const recs = runSamples(foods, input);
-      const over = recs.filter((r) => r.plan!.totalPrice > limit);
+      const over = recs.filter((r) => r.status !== 'noMatch' && r.plan.totalPrice > limit);
       results.push(buildResult(
         `scenario-8-budget-cap-${budget}`,
         `场景8a: 默认库${budget}总价≤${limit}`,
         over.length === 0,
         over.length
-          ? `超预算: ${over.map((r) => `${r.plan!.main.name}(¥${r.plan!.totalPrice})`).join('、')}`
+          ? `超预算: ${over.map((r) => asOk(r).plan.main.name + '(¥' + asOk(r).plan.totalPrice + ')').join('、')}`
           : `通过 样本: ${summarize(recs)}`
       ));
     }
 
-    // Custom small catalogue: only over-budget foods
     const customFoods: FoodItem[] = [
       {
-        id: 'test-maocai',
-        name: '冒菜(28元)',
-        priceRange: 'under50',
-        distance: 'medium',
-        type: 'meal',
-        estimatedPrice: 28,
-        satiety: 4,
-        mealRole: 'main',
-        occasionLevel: 3,
-        tags: ['starving', 'hotFood'],
-        spicy: true,
-        stability: 'medium',
-        createdAt: now,
-        updatedAt: now,
+        id: 'test-maocai', name: '冒菜(28元)', priceRange: 'under50', distance: 'medium',
+        type: 'meal', estimatedPrice: 28, satiety: 4, mealRole: 'main',
+        occasionLevel: 3, tags: ['starving', 'hotFood'], spicy: true, stability: 'medium',
+        createdAt: now, updatedAt: now,
       },
       {
-        id: 'test-hanbao',
-        name: '汉堡(30元)',
-        priceRange: 'under50',
-        distance: 'delivery',
-        type: 'happy',
-        estimatedPrice: 30,
-        satiety: 4,
-        mealRole: 'main',
-        occasionLevel: 2,
-        tags: ['lazy', 'reward'],
-        spicy: false,
-        stability: 'medium',
-        createdAt: now,
-        updatedAt: now,
+        id: 'test-hanbao', name: '汉堡(30元)', priceRange: 'under50', distance: 'delivery',
+        type: 'happy', estimatedPrice: 30, satiety: 4, mealRole: 'main',
+        occasionLevel: 2, tags: ['lazy', 'reward'], spicy: false, stability: 'medium',
+        createdAt: now, updatedAt: now,
       },
     ];
-    const customInput: DecisionInput = {
-      ...baseInput,
-      selectedMoods: ['noIdea'],
-      budget: 'under20',
-    };
+    const customInput: DecisionInput = { ...baseInput, selectedMoods: ['noIdea'], budget: 'under20' };
     const customRecs = runSamples(customFoods, customInput);
-    // All foods exceed budget → every result must be noMatch (NOT degraded with a fake food)
     const notNoMatch = customRecs.filter((r) => r.status !== 'noMatch');
     const hasFakeFood = customRecs.filter((r) => r.status === 'noMatch' && (r.plan !== undefined || r.food !== undefined));
     results.push(buildResult(
@@ -435,18 +413,14 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
   // Scenario 9: no forced addons
   // =========================================================================
   {
-    const input: DecisionInput = {
-      ...baseInput,
-      selectedMoods: ['noIdea'],
-      budget: 'under50',
-    };
+    const input: DecisionInput = { ...baseInput, selectedMoods: ['noIdea'], budget: 'under50' };
     const recs = runSamples(foods, input);
 
     const forcedAddons = recs.filter((r) => {
-      if (!r.plan!.addon) return false;
+      if (r.status === 'noMatch' || !r.plan.addon) return false;
       return (
-        r.plan!.main.satiety >= 4 &&
-        !r.plan!.reasons.some((reason) => reason.includes('奖励') || reason.includes('分享'))
+        r.plan.main.satiety >= 4 &&
+        !r.plan.reasons.some((reason) => reason.includes('奖励') || reason.includes('分享'))
       );
     });
 
@@ -456,8 +430,8 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       '场景9: 无明确需求不强行加餐凑预算',
       passed,
       passed
-        ? `通过 饮料${recs.filter(r => r.plan!.drink).length}次 加餐${recs.filter(r => r.plan!.addon).length}次 样本: ${summarize(recs)}`
-        : `强行加餐: ${forcedAddons.length}次 → ${forcedAddons.map(r => r.plan!.main.name).join('、')}`
+        ? `通过 饮料${recs.filter(r => r.status !== 'noMatch' && r.plan.drink).length}次 加餐${recs.filter(r => r.status !== 'noMatch' && r.plan.addon).length}次 样本: ${summarize(recs)}`
+        : `强行加餐: ${forcedAddons.length}次 → ${forcedAddons.map(r => asOk(r).plan.main.name).join('、')}`
     ));
   }
 
@@ -467,64 +441,29 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
   {
     const tinyFoods: FoodItem[] = [
       {
-        id: 'tiny-main',
-        name: '黄焖鸡',
-        priceRange: 'under20',
-        distance: 'near',
-        type: 'meal',
-        estimatedPrice: 18,
-        satiety: 4,
-        mealRole: 'main',
-        occasionLevel: 2,
-        tags: ['noIdea'],
-        spicy: false,
-        stability: 'high',
-        createdAt: now,
-        updatedAt: now,
+        id: 'tiny-main', name: '黄焖鸡', priceRange: 'under20', distance: 'near',
+        type: 'meal', estimatedPrice: 18, satiety: 4, mealRole: 'main',
+        occasionLevel: 2, tags: ['noIdea'], spicy: false, stability: 'high',
+        createdAt: now, updatedAt: now,
       },
       {
-        id: 'tiny-drink',
-        name: '奶茶',
-        priceRange: 'under20',
-        distance: 'near',
-        type: 'drink',
-        estimatedPrice: 15,
-        satiety: 1,
-        mealRole: 'drink',
-        occasionLevel: 1,
-        tags: ['milkTea'],
-        spicy: false,
-        stability: 'medium',
-        createdAt: now,
-        updatedAt: now,
+        id: 'tiny-drink', name: '奶茶', priceRange: 'under20', distance: 'near',
+        type: 'drink', estimatedPrice: 15, satiety: 1, mealRole: 'drink',
+        occasionLevel: 1, tags: ['milkTea'], spicy: false, stability: 'medium',
+        createdAt: now, updatedAt: now,
       },
       {
-        id: 'tiny-addon',
-        name: '小吃',
-        priceRange: 'under20',
-        distance: 'near',
-        type: 'snack',
-        estimatedPrice: 10,
-        satiety: 2,
-        mealRole: 'addon',
-        occasionLevel: 1,
-        tags: [],
-        spicy: false,
-        stability: 'medium',
-        createdAt: now,
-        updatedAt: now,
+        id: 'tiny-addon', name: '小吃', priceRange: 'under20', distance: 'near',
+        type: 'snack', estimatedPrice: 10, satiety: 2, mealRole: 'addon',
+        occasionLevel: 1, tags: [], spicy: false, stability: 'medium',
+        createdAt: now, updatedAt: now,
       },
     ];
-    const tinyInput: DecisionInput = {
-      ...baseInput,
-      selectedMoods: ['noIdea'],
-      budget: 'under20',
-      mealIntent: 'fullMeal',
-    };
+    const tinyInput: DecisionInput = { ...baseInput, selectedMoods: ['noIdea'], budget: 'under20', mealIntent: 'fullMeal' };
     const tinyRecs = runSamples(tinyFoods, tinyInput);
 
     const altWithDrinkOrAddon = tinyRecs.filter((r) =>
-      r.alternatives.some((a) => isDrink(a.main) || isAddonFood(a.main))
+      r.status !== 'noMatch' && r.alternatives.some((a) => isDrink(a.main) || isAddonFood(a.main))
     );
 
     results.push(buildResult(
@@ -533,7 +472,7 @@ export const runRecommendationScenarios = (foods: FoodItem[]): RecommendationSce
       altWithDrinkOrAddon.length === 0,
       altWithDrinkOrAddon.length > 0
         ? `备选含饮料/addon: ${altWithDrinkOrAddon.length}次`
-        : `通过 样本: ${summarize(tinyRecs)}; 备选数: ${tinyRecs.map(r => r.alternatives.length).join(',')}`
+        : `通过 样本: ${summarize(tinyRecs)}; 备选数: ${tinyRecs.filter(r => r.status !== 'noMatch').map(r => r.alternatives.length).join(',')}`
     ));
   }
 
