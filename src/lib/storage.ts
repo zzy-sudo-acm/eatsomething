@@ -1,5 +1,5 @@
 import { defaultFoods } from '../data/defaultFoods';
-import { DecisionHistory, Distance, FoodItem, FoodType, MealRole, Satiety, Stability } from '../types';
+import { DecisionHistory, Distance, FoodItem, FoodType, MealRole, OccasionLevel, Satiety, Stability } from '../types';
 import { inferPriceRangeFromEstimatedPrice } from './options';
 import { toMoodIds } from './moods';
 
@@ -56,6 +56,24 @@ const isMealRole = (value: unknown): value is MealRole =>
 
 const isStability = (value: unknown): value is Stability =>
   typeof value === 'string' && stabilityValues.includes(value as Stability);
+
+const occasionLevelValues: OccasionLevel[] = [1, 2, 3, 4, 5];
+
+const isOccasionLevel = (value: unknown): value is OccasionLevel =>
+  typeof value === 'number' && occasionLevelValues.includes(value as OccasionLevel);
+
+const inferOccasionLevel = (food: FoodDraft): OccasionLevel => {
+  const role = isMealRole(food.mealRole) ? food.mealRole : inferMealRole(food);
+  if (role === 'drink') return 1;
+  if (role === 'addon' || role === 'lightMeal') return 1;
+  // main foods: use price as a rough heuristic but capped conservatively
+  const price = typeof food.estimatedPrice === 'number' ? food.estimatedPrice : 16;
+  if (price <= 10) return 1;
+  if (price <= 18) return 2;
+  if (price <= 30) return 3;
+  if (price <= 40) return 4;
+  return 5;
+};
 
 const inferMealRole = (food: FoodDraft): MealRole => {
   const name = typeof food.name === 'string' ? food.name : '';
@@ -116,6 +134,7 @@ export const normalizeFood = (food: FoodItem | ImportableFood): FoodItem => {
       : [],
     spicy: typeof draft.spicy === 'boolean' ? draft.spicy : false,
     stability: isStability(draft.stability) ? draft.stability : 'medium',
+    occasionLevel: isOccasionLevel(draft.occasionLevel) ? draft.occasionLevel : inferOccasionLevel(draft),
     createdAt,
     updatedAt,
   };

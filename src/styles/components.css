@@ -658,6 +658,64 @@
   white-space: nowrap;
 }
 
+/* ---- 用餐方案拆解 ---- */
+.meal-plan-breakdown {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  display: grid;
+  gap: 6px;
+}
+
+.meal-plan-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.meal-plan-row--main .meal-plan-name {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.meal-plan-row--drink .meal-plan-name,
+.meal-plan-row--addon .meal-plan-name {
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.meal-plan-label {
+  color: var(--text-mute);
+  font-size: 12px;
+  font-weight: 800;
+  min-width: 28px;
+}
+
+.meal-plan-price {
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.meal-plan-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+.meal-plan-row--total .meal-plan-label {
+  color: var(--mint-deep);
+}
+
+.meal-plan-total-price {
+  color: var(--mint-deep);
+  font-size: 15px;
+  font-weight: 900;
+}
+
 /* ---- 判决仪式感:候选闪动 ---- */
 .loading-flash-name {
   font-size: 26px;

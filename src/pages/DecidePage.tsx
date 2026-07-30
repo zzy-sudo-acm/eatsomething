@@ -6,7 +6,7 @@ import { distanceLabels, moodOptions, primaryMoodOptions, priceLabels, stripRela
 import { makeId } from '../lib/storage';
 import { moodLabel } from '../lib/moods';
 import { recommendFood } from '../lib/recommend';
-import { DecisionHistory, DecisionInput, Distance, Feedback, FoodItem, PriceRange, Recommendation } from '../types';
+import { DecisionHistory, DecisionInput, Distance, Feedback, FoodItem, MealIntent, PriceRange, Recommendation } from '../types';
 
 interface DecidePageProps {
   foods: FoodItem[];
@@ -17,6 +17,11 @@ interface DecidePageProps {
 
 const budgetOptions: PriceRange[] = ['under10', 'under20', 'under50', 'any'];
 const distanceOptions: Distance[] = ['near', 'medium', 'delivery', 'far'];
+const mealIntentOptions: { value: MealIntent; label: string }[] = [
+  { value: 'fullMeal', label: '正经吃一顿' },
+  { value: 'lightMeal', label: '随便垫一下' },
+  { value: 'drink', label: '只想喝点' },
+];
 
 const loadingLines = [
   '正在让胃开会…',
@@ -49,6 +54,7 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
   const [budget, setBudget] = useState<PriceRange>('under20');
   const [distance, setDistance] = useState<Distance>('near');
   const [coupleMode, setCoupleMode] = useState(false);
+  const [mealIntent, setMealIntent] = useState<MealIntent>('fullMeal');
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [lastDecisionInput, setLastDecisionInput] = useState<DecisionInput | null>(null);
   const [submittedFeedback, setSubmittedFeedback] = useState<Feedback | undefined>();
@@ -127,6 +133,7 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
       budget,
       distance,
       coupleMode,
+      mealIntent,
     };
 
     setLastDecisionInput(inputSnapshot);
@@ -235,6 +242,24 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
           onChange={setPartnerMoods}
         />
       )}
+
+      <section className="section-block section-block--light">
+        <div className="section-title-row">
+          <h2>这顿怎么吃</h2>
+        </div>
+        <div className="segmented-grid">
+          {mealIntentOptions.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className={`segment ${mealIntent === item.value ? 'is-selected' : ''}`}
+              onClick={() => setMealIntent(item.value)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </section>
 
       <section className="section-block section-block--light">
         <div className="section-title-row">

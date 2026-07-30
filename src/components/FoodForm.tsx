@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Save, X } from 'lucide-react';
-import { Distance, FoodItem, FoodType, MealRole, PriceRange, Satiety, Stability } from '../types';
+import { Distance, FoodItem, FoodType, MealRole, OccasionLevel, PriceRange, Satiety, Stability } from '../types';
 import {
   displayMoodLabel,
   foodDistanceLabels,
@@ -25,6 +25,14 @@ const typeOptions: FoodType[] = ['meal', 'snack', 'drink', 'happy', 'date'];
 const mealRoleOptions: MealRole[] = ['main', 'lightMeal', 'addon', 'drink'];
 const satietyOptions: Satiety[] = [1, 2, 3, 4, 5];
 const stabilityOptions: Stability[] = ['high', 'medium', 'low'];
+const occasionLevelOptions: OccasionLevel[] = [1, 2, 3, 4, 5];
+const occasionLevelLabels: Record<OccasionLevel, string> = {
+  1: '1 快速解决',
+  2: '2 普通正餐',
+  3: '3 像样一顿',
+  4: '4 吃好一点',
+  5: '5 正式聚餐',
+};
 const foodTagOptions = [...moodOptions, 'coupleFriendly'];
 const normalizeTags = (values: string[]) => toMoodIds(values);
 const autoPriceLabels: Record<PriceRange, string> = {
@@ -53,6 +61,7 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
   const [tags, setTags] = useState<string[]>(() => normalizeTags(initial?.tags ?? []));
   const [spicy, setSpicy] = useState(initial?.spicy ?? false);
   const [stability, setStability] = useState<Stability>(initial?.stability ?? 'medium');
+  const [occasionLevel, setOccasionLevel] = useState<OccasionLevel>(initial?.occasionLevel ?? 2);
   const [priceTouched, setPriceTouched] = useState(false);
   const [satietyTouched, setSatietyTouched] = useState(false);
   const [mealRoleTouched, setMealRoleTouched] = useState(false);
@@ -112,6 +121,7 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
       tags,
       spicy,
       stability,
+      occasionLevel,
       createdAt: initial?.createdAt ?? time,
       updatedAt: time,
     });
@@ -211,6 +221,17 @@ export function FoodForm({ initial, onCancel, onSave }: FoodFormProps) {
           {stabilityOptions.map((item) => (
             <option key={item} value={item}>
               {stabilityLabels[item]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="field">
+        <span>正式程度</span>
+        <select value={occasionLevel} onChange={(event) => setOccasionLevel(Number(event.target.value) as OccasionLevel)}>
+          {occasionLevelOptions.map((item) => (
+            <option key={item} value={item}>
+              {occasionLevelLabels[item]}
             </option>
           ))}
         </select>

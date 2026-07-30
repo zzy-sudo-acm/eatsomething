@@ -11,6 +11,7 @@ const baseInput: DecisionInput = {
   budget: 'under20',
   distance: 'near',
   coupleMode: false,
+  mealIntent: 'fullMeal',
 };
 
 const entry = (overrides: Partial<DecisionHistory>): DecisionHistory => ({
@@ -34,7 +35,9 @@ describe('推荐场景自检(原 app 内自检迁移)', () => {
 
 describe('反馈权重', () => {
   const scoreOf = (history: DecisionHistory[], foodId: string) =>
-    recommendFood(defaultFoods, history, baseInput).scoredFoods.find((item) => item.food.id === foodId)?.score ?? 0;
+    recommendFood(defaultFoods, history, baseInput).scoredFoods.find(
+      (item) => item.food.id === foodId
+    )?.score ?? 0;
 
   it('连续两次后悔明显降权', () => {
     const clean = scoreOf([], 'food-huangmenji');
@@ -85,6 +88,62 @@ describe('旧中文文案数据兼容', () => {
   });
 });
 
+describe('MealPlan 结构', () => {
+  it('fullMeal 时主推荐不能是饮料', () => {
+    const input: DecisionInput = { ...baseInput, mealIntent: 'fullMeal', budget: 'under50' };
+    const result = recommendFood(defaultFoods, [], input);
+    expect(result.plan.main.mealRole).not.toBe('drink');
+  });
+
+  it('drink 意图时饮料可以作为主推荐', () => {
+    const input: DecisionInput = {
+      ...baseInput,
+      mealIntent: 'drink',
+      selectedMoods: ['milkTea'],
+      budget: 'under20',
+    };
+    const result = recommendFood(defaultFoods, [], input);
+    // Either the main is a drink, or there's at least one drink in scored foods that's eligible
+    const drinkInScored = result.scoredFoods.some(
+      (item) => item.food.mealRole === 'drink' && !item.hardBlocked
+    );
+    expect(result.plan.main.mealRole === 'drink' || drinkInScored).toBe(true);
+  });
+
+  it('组合总价不超过预算上限', () => {
+    const input: DecisionInput = { ...baseInput, budget: 'under20' };
+    const result = recommendFood(defaultFoods, [], input);
+    expect(result.plan.totalPrice).toBeLessThanOrEqual(20);
+  });
+
+  it('milkTea + dinner 时奶茶不应成为主推荐', () => {
+    const input: DecisionInput = {
+      ...baseInput,
+      mealIntent: 'fullMeal',
+      selectedMoods: ['milkTea'],
+      budget: 'under50',
+    };
+    const result = recommendFood(defaultFoods, [], input);
+    // Main must not be milk tea
+    const isMilkTea = result.plan.main.name.includes('奶茶') || result.plan.main.tags.includes('milkTea');
+    expect(isMilkTea).toBe(false);
+  });
+
+  it('starving 时主食饱腹度应 >= 3', () => {
+    const input: DecisionInput = {
+      ...baseInput,
+      mealIntent: 'fullMeal',
+      selectedMoods: ['starving'],
+      budget: 'under50',
+    };
+    // Try multiple times with fixed random seeds
+    for (let i = 0; i < 5; i++) {
+      const result = recommendFood(defaultFoods, [], input, () => i / 5);
+      expect(result.plan.main.satiety).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
 describe('胃部判决报告', () => {
   it('统计最常吃/回购王/后悔王/花费', () => {
     const now = Date.now();
@@ -113,5 +172,14 @@ describe('胃部判决报告', () => {
     const report = buildStomachReport([], defaultFoods, 'week');
     expect(report.mealCount).toBe(0);
     expect(report.verdict).toBe('查无此胃');
+  });
+});
+
+describe('确定性 RNG', () => {
+  it('相同输入 + 相同 RNG → 相同结果', () => {
+    const a = recommendFood(defaultFoods, [], baseInput, () => 0.5);
+    const b = recommendFood(defaultFoods, [], baseInput, () => 0.5);
+    expect(a.plan.main.id).toBe(b.plan.main.id);
+    expect(a.plan.totalPrice).toBe(b.plan.totalPrice);
   });
 });

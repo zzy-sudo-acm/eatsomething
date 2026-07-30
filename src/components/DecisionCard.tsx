@@ -73,6 +73,35 @@ export function DecisionCard({
       <h2>{copy.title}</h2>
       <div className="decision-food-name">{food.name}</div>
 
+      {(recommendation.plan.drink || recommendation.plan.addon) && (
+        <div className="meal-plan-breakdown">
+          <div className="meal-plan-row meal-plan-row--main">
+            <span className="meal-plan-label">主食</span>
+            <span className="meal-plan-name">{recommendation.plan.main.name}</span>
+            <span className="meal-plan-price">{recommendation.plan.main.estimatedPrice} 元</span>
+          </div>
+          {recommendation.plan.drink && (
+            <div className="meal-plan-row meal-plan-row--drink">
+              <span className="meal-plan-label">搭配</span>
+              <span className="meal-plan-name">{recommendation.plan.drink.name}</span>
+              <span className="meal-plan-price">{recommendation.plan.drink.estimatedPrice} 元</span>
+            </div>
+          )}
+          {recommendation.plan.addon && (
+            <div className="meal-plan-row meal-plan-row--addon">
+              <span className="meal-plan-label">加餐</span>
+              <span className="meal-plan-name">{recommendation.plan.addon.name}</span>
+              <span className="meal-plan-price">{recommendation.plan.addon.estimatedPrice} 元</span>
+            </div>
+          )}
+          <div className="meal-plan-divider" />
+          <div className="meal-plan-row meal-plan-row--total">
+            <span className="meal-plan-label">预计总价</span>
+            <span className="meal-plan-total-price">{recommendation.plan.totalPrice} 元</span>
+          </div>
+        </div>
+      )}
+
       <div className="meta-strip">
         <span>
           <CircleDollarSign size={15} />
