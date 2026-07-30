@@ -24,9 +24,9 @@ export const detectMealPeriod = (now: Date = new Date()): MealPeriod => {
  * Resolve meal intent. Explicit user choice wins; otherwise derive from period.
  * Lunch & dinner default to fullMeal. Late-night defaults to lightMeal.
  */
-export const resolveMealIntent = (input: DecisionInput): MealIntent => {
+export const resolveMealIntent = (input: DecisionInput, now: Date = new Date()): MealIntent => {
   if (input.mealIntent) return input.mealIntent;
-  const period = detectMealPeriod();
+  const period = detectMealPeriod(now);
   if (period === 'lunch' || period === 'dinner') return 'fullMeal';
   if (period === 'lateNight') return 'lightMeal';
   return 'fullMeal';

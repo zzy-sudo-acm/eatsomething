@@ -27,7 +27,15 @@ export function HistoryList({ history }: HistoryListProps) {
             <Clock3 size={15} />
             {formatTime(item.createdAt)}
           </div>
-          <div className="history-name">{item.foodName}</div>
+          <div className="history-name">
+            {item.foodName}
+            {(item.drinkName || item.addonName) && (
+              <span className="history-combo">
+                {[item.drinkName, item.addonName].filter(Boolean).join(' + ')}
+                {item.totalPrice != null && ` · ${item.totalPrice}元`}
+              </span>
+            )}
+          </div>
           <div className="history-meta">
             <span>{priceLabels[item.budget]}</span>
             <span>{distanceLabels[item.distance]}</span>

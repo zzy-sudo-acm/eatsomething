@@ -9,13 +9,15 @@ import {
 import { hasDrinkMood } from './eligibility';
 
 /**
- * Weighted random pick from scored items (mutable — modifies weights by score).
+ * Weighted random pick from scored items.
  * rng parameter makes this deterministic in tests.
+ * Returns null if items is empty.
  */
 const pickWeighted = <T extends ScoredFood>(
   items: T[],
   rng: () => number
-): T => {
+): T | null => {
+  if (!items.length) return null;
   const minScore = Math.min(...items.map((item) => item.score));
   const weighted = items.map((item) => ({
     item,
@@ -32,17 +34,23 @@ const pickWeighted = <T extends ScoredFood>(
 
 /**
  * Select the main food from scored candidates.
+ * Returns null when no eligible food exists (degraded result).
+ *
+ * Fix 3: when hasDrinkMood, reserve budget for the drink before selecting main.
  */
 export const selectMain = (
   scoredMains: ScoredFood[],
   moods: string[],
-  rng: () => number
-): ScoredFood => {
-  const eligible = scoredMains.filter((item) => !item.hardBlocked);
-  if (!eligible.length) {
-    // Fallback: use everything
-    return pickWeighted(scoredMains, rng);
-  }
+  rng: () => number,
+  /** If set, only consider foods within this budget (for drink reservation). */
+  mainBudgetLimit: number = Infinity
+): ScoredFood | null => {
+  // Filter: not hard-blocked AND within mainBudget
+  let eligible = scoredMains.filter(
+    (item) => !item.hardBlocked && item.food.estimatedPrice <= mainBudgetLimit
+  );
+
+  if (!eligible.length) return null;
 
   const bestScore = eligible[0]?.score ?? 0;
   let pool = eligible.filter((item) => item.score >= bestScore - 18).slice(0, 6);
@@ -64,6 +72,38 @@ export const selectMain = (
   }
 
   return pickWeighted(pool, rng);
+};
+
+/**
+ * Find the best target drink within budget, for drink-reservation mode.
+ */
+const findTargetDrink = (
+  foods: FoodItem[],
+  budgetLimit: number,
+  moods: string[],
+  input: DecisionInput
+): FoodItem | null => {
+  const candidates = foods
+    .filter((food) => food.mealRole === 'drink' && food.estimatedPrice <= budgetLimit)
+    .filter((food) => !(moods.includes('noSpicy') && food.spicy));
+
+  if (!candidates.length) return null;
+
+  // Prefer milkTea if user wants it
+  if (moods.includes('milkTea')) {
+    const milkTea = candidates.find((f) => f.tags.includes('milkTea'));
+    if (milkTea) return milkTea;
+  }
+
+  // Prefer wantDrink-tagged
+  if (moods.includes('wantDrink')) {
+    const want = candidates.find((f) => f.tags.includes('wantDrink'));
+    if (want) return want;
+  }
+
+  // Fallback: cheapest drink
+  candidates.sort((a, b) => a.estimatedPrice - b.estimatedPrice);
+  return candidates[0];
 };
 
 /**
@@ -94,7 +134,6 @@ export const buildMealPlan = (
       .sort((a, b) => b.score - a.score);
 
     if (drinkOptions.length > 0) {
-      // Don't automatically add — only if there's a real reason
       const best = drinkOptions[0];
       const drinkMood = hasDrinkMood(moods);
       const isMilkTea = best.food.tags.includes('milkTea') && moods.includes('milkTea');
@@ -121,7 +160,6 @@ export const buildMealPlan = (
 
     if (addonOptions.length > 0) {
       const best = addonOptions[0];
-      // Only add if there's a clear reason, not just "budget allows it"
       if (best.score >= 10 || main.food.satiety <= 2) {
         addon = best.food;
         addonCandidate = best;
@@ -147,23 +185,115 @@ export const buildMealPlan = (
 };
 
 /**
- * Build alternative meal plans (2 max).
- * Each alternative is just a different main food without companions
- * (to keep the UI simple and avoid combinatorial explosion).
+ * Build the meal plan with drink-priority: reserve budget for the drink FIRST,
+ * then select a main that fits the remaining budget.
+ *
+ * Returns the plan + whether the drink was successfully included.
  */
-export const buildAlternatives = (
-  mainPicked: ScoredFood,
+export const buildMealPlanWithDrinkPriority = (
   scoredMains: ScoredFood[],
   allFoods: FoodItem[],
   input: DecisionInput,
   moods: string[],
   rng: () => number
+): { plan: MealPlan; main: ScoredFood; drinkIncluded: boolean; drinkCandidate: ScoredFood | null; addonCandidate: ScoredFood | null } => {
+  const budgetLimit = getBudgetLimit(input.budget);
+  const targetDrink = findTargetDrink(allFoods, budgetLimit, moods, input);
+
+  if (targetDrink) {
+    const mainBudget = budgetLimit - targetDrink.estimatedPrice;
+    const main = selectMain(scoredMains, moods, rng, mainBudget);
+
+    if (main) {
+      // Build plan with the reserved drink
+      const remaining = mainBudget - main.food.estimatedPrice;
+      // Force-add the target drink
+      const { plan: fullPlan, addonCandidate } = buildMealPlan(main, allFoods, input, moods, rng);
+
+      // Override the plan to use our reserved drink
+      const reasons: string[] = [];
+      if (moods.includes('milkTea')) reasons.push(`预留了${targetDrink.name}的预算，先保证奶茶能配上`);
+      else reasons.push('先留了饮料的预算，再选主食');
+
+      // Rebuild addon after drink
+      let addon: FoodItem | undefined;
+      let finalAddonCandidate: ScoredFood | null = null;
+      const afterDrink = mainBudget - main.food.estimatedPrice;
+      if (shouldConsiderAddon(main.food, input, moods, afterDrink)) {
+        const usedIds = new Set([main.food.id, targetDrink.id]);
+        const addonOptions = allFoods
+          .filter((food) => !usedIds.has(food.id))
+          .map((food) => scoreAddonOption(food, main.food, input, moods, afterDrink))
+          .filter((item): item is ScoredFood => item !== null && !item.hardBlocked)
+          .sort((a, b) => b.score - a.score);
+        if (addonOptions.length > 0 && (addonOptions[0].score >= 10 || main.food.satiety <= 2)) {
+          addon = addonOptions[0].food;
+          finalAddonCandidate = addonOptions[0];
+        }
+      }
+
+      const totalPrice = main.food.estimatedPrice + targetDrink.estimatedPrice + (addon?.estimatedPrice ?? 0);
+
+      return {
+        plan: {
+          main: main.food,
+          drink: targetDrink,
+          addon,
+          totalPrice,
+          reasons,
+        },
+        main,
+        drinkIncluded: true,
+        drinkCandidate: {
+          food: targetDrink,
+          score: 100,
+          reasons: ['预留预算'],
+          warnings: [],
+          hardBlocked: false,
+          hardBlockReasons: [],
+        },
+        addonCandidate: finalAddonCandidate,
+      };
+    }
+  }
+
+  // Drink couldn't be included — fall back to normal selection
+  const main = selectMain(scoredMains, moods, rng);
+  if (!main) {
+    // Ultimate fallback
+    return {
+      plan: { main: scoredMains[0]?.food ?? allFoods[0], totalPrice: scoredMains[0]?.food?.estimatedPrice ?? 0, reasons: ['无可选方案'] },
+      main: scoredMains[0],
+      drinkIncluded: false,
+      drinkCandidate: null,
+      addonCandidate: null,
+    };
+  }
+
+  const result = buildMealPlan(main, allFoods, input, moods, rng);
+  return {
+    plan: result.plan,
+    main,
+    drinkIncluded: false,
+    drinkCandidate: result.drinkCandidate,
+    addonCandidate: result.addonCandidate,
+  };
+};
+
+/**
+ * Build alternative meal plans (up to 2).
+ * Fix 4: strict only — no loose fallback that re-admits hardBlocked foods.
+ */
+export const buildAlternatives = (
+  mainPicked: ScoredFood,
+  scoredMains: ScoredFood[],
+  input: DecisionInput,
+  moods: string[]
 ): MealPlan[] => {
   const results: MealPlan[] = [];
   const seen = new Set([mainPicked.food.id]);
   const avoidSpicy = moods.includes('noSpicy');
 
-  // First pass: strict alternatives (eligible, unblocked, different food)
   const strict = scoredMains
     .filter((item) => !seen.has(item.food.id))
     .filter((item) => !item.hardBlocked)
@@ -179,20 +309,6 @@ export const buildAlternatives = (
     });
   }
 
-  // Second pass: loose alternatives if we don't have 2 yet
-  if (results.length < 2) {
-    const loose = scoredMains
-      .filter((item) => !seen.has(item.food.id))
-      .filter((item) => !(avoidSpicy && item.food.spicy));
-
-    for (let i = 0; i < Math.min(2 - results.length, loose.length); i++) {
-      results.push({
-        main: loose[i].food,
-        totalPrice: loose[i].food.estimatedPrice,
-        reasons: [],
-      });
-    }
-  }
-
+  // No loose fallback. If fewer than 2, that's fine.
   return results;
 };

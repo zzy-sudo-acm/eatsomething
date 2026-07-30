@@ -51,7 +51,9 @@ export const buildCopy = (
   input: DecisionInput,
   alternatives: MealPlan[],
   history: DecisionHistory[],
-  intent: MealIntent
+  intent: MealIntent,
+  degraded: boolean = false,
+  degradeReason?: string
 ): DecisionCopy => {
   const moods = unique(input.selectedMoods).filter((mood) => !isRelationshipMood(mood));
   const partnerMoods = unique(input.partnerMoods ?? []).filter((mood) => !isRelationshipMood(mood));
@@ -131,6 +133,11 @@ export const buildCopy = (
   // eatLight context
   if (allMoods.includes('eatLight') && food.mealRole === 'lightMeal') {
     reason += '这不是不吃饭，是吃轻一点，给胃留点余地。';
+  }
+
+  // Degradation notice
+  if (degraded && degradeReason) {
+    reason += `（${degradeReason}）`;
   }
 
   // Risk

@@ -163,6 +163,14 @@
   font-weight: 900;
 }
 
+.history-combo {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-mute);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .history-meta {
   display: flex;
   flex-wrap: wrap;

@@ -115,14 +115,19 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
 
     return {
       id: makeId('history'),
-      foodId: recommendation.food.id,
-      foodName: recommendation.food.name,
+      foodId: recommendation.plan.main.id,
+      foodName: recommendation.plan.main.name,
       selectedMoods: activeInput.selectedMoods,
       partnerMoods: activeInput.partnerMoods,
       budget: activeInput.budget,
       distance: activeInput.distance,
       feedback: 'skipped',
       createdAt: Date.now(),
+      drinkId: recommendation.plan.drink?.id,
+      drinkName: recommendation.plan.drink?.name,
+      addonId: recommendation.plan.addon?.id,
+      addonName: recommendation.plan.addon?.name,
+      totalPrice: recommendation.plan.totalPrice,
     };
   };
 
@@ -180,13 +185,18 @@ export function DecidePage({ foods, history, devMode, onAddHistory }: DecidePage
 
   const baseEntry = (): DecisionHistory => ({
     id: makeId('history'),
-    foodId: recommendation!.food.id,
-    foodName: recommendation!.food.name,
+    foodId: recommendation!.plan.main.id,
+    foodName: recommendation!.plan.main.name,
     selectedMoods: activeInput.selectedMoods,
     partnerMoods: activeInput.partnerMoods,
     budget: activeInput.budget,
     distance: activeInput.distance,
     createdAt: Date.now(),
+    drinkId: recommendation!.plan.drink?.id,
+    drinkName: recommendation!.plan.drink?.name,
+    addonId: recommendation!.plan.addon?.id,
+    addonName: recommendation!.plan.addon?.name,
+    totalPrice: recommendation!.plan.totalPrice,
   });
 
   const handleFeedback = (feedback: Feedback) => {

@@ -12,17 +12,14 @@ import { moodLabel } from '../moods';
 import { coupleFriendlyTags, isRelationshipMood } from '../options';
 import { feedbackScore, recentPenalty, regretStreak, skipPenalty } from './feedback';
 import { getHardBlockReasons, hasDrinkMood, isEligibleAsMain } from './eligibility';
-import { wantsUpscale } from './normalizeInput';
-
-const unique = (values: string[]) =>
-  Array.from(new Set(values.filter(Boolean)));
+import { getBudgetLimit, wantsUpscale } from './normalizeInput';
 
 const isCoupleFriendlyFood = (food: FoodItem) =>
   food.tags.some((tag) => coupleFriendlyTags.includes(tag));
 
 // ---- budget scoring (main food) ----
-// Budget is now primarily a HARD cap, not a target.
-// We score based on fit, not on "how close to the limit".
+// Budget is now primarily a HARD cap — foods over budget are hardBlocked.
+// This score applies only to foods within budget.
 
 const budgetScoreForMain = (selected: PriceRange, food: FoodItem, moods: string[]): number => {
   if (selected === 'any') return 0;
@@ -31,24 +28,20 @@ const budgetScoreForMain = (selected: PriceRange, food: FoodItem, moods: string[
   const price = food.estimatedPrice;
 
   if (selected === 'under10') {
-    if (price <= 10) return 22;
-    // Over budget: massive penalty — the budget is a hard cap, not a target
-    return -50;
+    if (price <= 10) return saving ? 25 : 20;
+    return -50; // should not reach here (hardBlocked), kept as safety
   }
 
   if (selected === 'under20') {
-    if (price <= 20) return 18;
+    if (price <= 20) return saving ? 20 : 16;
     return -50;
   }
 
   // under50
   if (price <= 50) {
-    // Budget fits — no penalty for being cheap. Reward good-value picks when saving.
     if (saving && price <= 20) return 16;
-    // Normal range: mild positive
     return 8;
   }
-  // Over 50 under under50 budget
   return -50;
 };
 
@@ -82,11 +75,14 @@ export const scoreMainFood = (
   period: MealPeriod,
   intent: MealIntent,
   history: DecisionHistory[],
-  now: number
+  now: number,
+  hasDrinkInCatalog: boolean = true
 ): ScoredFood => {
   let score = 10;
   const reasons: string[] = [];
   const warnings: string[] = [];
+
+  const budgetLimit = getBudgetLimit(input.budget);
 
   // --- Mood matching ---
   const matchedMoods = moods.filter((mood) => food.tags.includes(mood));
@@ -246,7 +242,6 @@ export const scoreMainFood = (
       score += 6;
       reasons.push('这顿可以像样点');
     }
-    // Mild penalty for too-casual food in upscale scenarios
     if (food.occasionLevel <= 1 && food.mealRole === 'main') {
       score -= 5;
       warnings.push('这场景可能太随便了');
@@ -292,11 +287,11 @@ export const scoreMainFood = (
     reasons.push('适合折中');
   }
 
-  // --- Hard block ---
-  const eligibility = isEligibleAsMain(food, intent, input, moods);
+  // --- Hard block (includes budget hard cap now) ---
+  const eligibility = isEligibleAsMain(food, intent, input, moods, budgetLimit, hasDrinkInCatalog);
   const hardBlockReasons = eligibility.eligible
-    ? getHardBlockReasons(food, input, moods, intent)
-    : [...getHardBlockReasons(food, input, moods, intent), eligibility.reason ?? '不符合主食条件'];
+    ? getHardBlockReasons(food, input, moods, intent, budgetLimit)
+    : [...getHardBlockReasons(food, input, moods, intent, budgetLimit), eligibility.reason ?? '不符合主食条件'];
 
   if (hardBlockReasons.length) warnings.push(...hardBlockReasons);
 

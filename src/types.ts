@@ -44,6 +44,12 @@ export interface DecisionHistory {
   distance: Distance;
   feedback?: Feedback;
   createdAt: number;
+  /** Meal-plan companion snapshot (optional, backward-compatible). */
+  drinkId?: string;
+  drinkName?: string;
+  addonId?: string;
+  addonName?: string;
+  totalPrice?: number;
 }
 
 export interface DecisionInput {
@@ -94,4 +100,8 @@ export interface Recommendation {
   score: number;
   copy: DecisionCopy;
   scoredFoods: ScoredFood[];
+  /** True when the engine fell back because no ideal candidate existed. */
+  degraded: boolean;
+  /** Human-readable degradation note. */
+  degradeReason?: string;
 }

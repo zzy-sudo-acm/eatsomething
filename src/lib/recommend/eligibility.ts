@@ -22,6 +22,21 @@ export interface EligibilityResult {
 }
 
 /**
+ * Check whether any budget-fitting drink exists in the entire catalog.
+ */
+export const catalogHasDrink = (
+  allFoods: FoodItem[],
+  budgetLimit: number,
+  moods: string[]
+): boolean =>
+  allFoods.some(
+    (food) =>
+      food.mealRole === 'drink' &&
+      food.estimatedPrice <= budgetLimit &&
+      !(moods.includes('noSpicy') && food.spicy)
+  );
+
+/**
  * Can this food serve as the MAIN recommendation?
  * This is a hard gate — if false, the food cannot be the primary pick.
  */
@@ -29,8 +44,15 @@ export const isEligibleAsMain = (
   food: FoodItem,
   intent: MealIntent,
   input: DecisionInput,
-  moods: string[]
+  moods: string[],
+  budgetLimit: number = Infinity,
+  hasDrinkInCatalog: boolean = true
 ): EligibilityResult => {
+  // -------- Hard budget cap (Fix 2) --------
+  if (food.estimatedPrice > budgetLimit) {
+    return { eligible: false, reason: `超出预算上限(${budgetLimit}元)` };
+  }
+
   // Spicy block
   if (moods.includes('noSpicy') && food.spicy) {
     return { eligible: false, reason: '明确不想吃辣' };
@@ -44,9 +66,8 @@ export const isEligibleAsMain = (
   if (intent === 'fullMeal') {
     if (food.mealRole === 'main') return { eligible: true };
     if (food.mealRole === 'lightMeal') {
-      // Allow light meals as main if user explicitly asked for light
       if (moods.includes('eatLight')) return { eligible: true };
-      // Tight budget fallback: when under10, light meals may be the only option
+      // Tight budget fallback: under10 may have no true mains
       if (input.budget === 'under10') return { eligible: true };
       return { eligible: false, reason: '正经吃一顿，轻食不适合当主食' };
     }
@@ -74,13 +95,19 @@ export const isEligibleAsMain = (
     return { eligible: false };
   }
 
+  // -------- Fix 1: drink intent — layered candidates --------
   if (intent === 'drink') {
+    // If any budget-fitting drink exists in the catalog, ONLY drinks can be main
+    if (hasDrinkInCatalog) {
+      if (food.mealRole === 'drink') return { eligible: true };
+      return { eligible: false, reason: '只想喝点东西，菜品库有饮料可选' };
+    }
+    // No drinks in catalog: degrade to lightMeal or addon
     if (food.mealRole === 'drink') return { eligible: true };
-    // Allow light snacks as fallback for drink-only intent
     if (food.mealRole === 'lightMeal' || food.mealRole === 'addon') {
       return { eligible: true };
     }
-    return { eligible: false, reason: '只想喝点东西' };
+    return { eligible: false, reason: '只想喝点东西，菜品库也没有饮料' };
   }
 
   return { eligible: false };
@@ -93,14 +120,14 @@ export const isEligibleAsDrink = (
   moods: string[],
   remainingBudget: number
 ): EligibilityResult => {
+  if (food.estimatedPrice > remainingBudget) {
+    return { eligible: false, reason: '超出剩余预算' };
+  }
   if (food.mealRole !== 'drink') {
     return { eligible: false, reason: '不是饮料' };
   }
   if (moods.includes('noSpicy') && food.spicy) {
     return { eligible: false, reason: '不想吃辣' };
-  }
-  if (food.estimatedPrice > remainingBudget) {
-    return { eligible: false, reason: '超出剩余预算' };
   }
   return { eligible: true };
 };
@@ -112,14 +139,14 @@ export const isEligibleAsAddon = (
   moods: string[],
   remainingBudget: number
 ): EligibilityResult => {
+  if (food.estimatedPrice > remainingBudget) {
+    return { eligible: false, reason: '超出剩余预算' };
+  }
   if (food.mealRole !== 'addon' && food.mealRole !== 'lightMeal') {
     return { eligible: false, reason: '不是加餐类' };
   }
   if (moods.includes('noSpicy') && food.spicy) {
     return { eligible: false, reason: '不想吃辣' };
-  }
-  if (food.estimatedPrice > remainingBudget) {
-    return { eligible: false, reason: '超出剩余预算' };
   }
   return { eligible: true };
 };
@@ -130,10 +157,15 @@ export const getHardBlockReasons = (
   food: FoodItem,
   input: DecisionInput,
   moods: string[],
-  intent: MealIntent
+  intent: MealIntent,
+  budgetLimit: number = Infinity
 ): string[] => {
   const reasons: string[] = [];
   const drinkNeed = hasDrinkMood(moods);
+
+  if (food.estimatedPrice > budgetLimit) {
+    reasons.push(`超出预算上限(${budgetLimit}元)`);
+  }
 
   if (moods.includes('noSpicy') && food.spicy) {
     reasons.push('明确不想吃辣');

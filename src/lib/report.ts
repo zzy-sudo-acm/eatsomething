@@ -118,10 +118,11 @@ export const buildStomachReport = (
   const fallbackPrice = knownPrices.length
     ? Math.round(knownPrices.reduce((sum, value) => sum + value, 0) / knownPrices.length)
     : 15;
-  const estimatedSpend = eaten.reduce(
-    (sum, item) => sum + (foodById.get(item.foodId)?.estimatedPrice ?? fallbackPrice),
-    0
-  );
+  const estimatedSpend = eaten.reduce((sum, item) => {
+    // Prefer stored totalPrice from meal-plan snapshot; fall back to main food price
+    if (typeof item.totalPrice === 'number' && item.totalPrice > 0) return sum + item.totalPrice;
+    return sum + (foodById.get(item.foodId)?.estimatedPrice ?? fallbackPrice);
+  }, 0);
 
   const nameCounter = count(eaten, (item) => item.foodName);
   const uniqueCount = nameCounter.size;
